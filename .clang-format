@@ -1,4 +1,5 @@
 # From Blender <3
+Language: C
 
 AlignAfterOpenBracket: Align
 AllowShortBlocksOnASingleLine: Empty
@@ -12,6 +13,8 @@ ConstructorInitializerAllOnOneLineOrOnePerLine: true
 # ContinuationIndentWidth: 4
 
 BreakBeforeBraces: Linux
+
+Cpp11BracedListStyle: false
 
 UseTab: Never
 IndentWidth: 4
