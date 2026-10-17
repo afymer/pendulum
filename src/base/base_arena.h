@@ -1,8 +1,11 @@
 #pragma once
 
+#define ARENA_DEFAULT_RESERVE_SIZE 4096
+#define ARENA_DEFAULT_COMMIT_SIZE 1024
+
 typedef struct arena_params_s arena_params_t;
 struct arena_params_s {
-    usize reserv_size;
+    usize reserve_size;
     usize commit_size;
 };
 

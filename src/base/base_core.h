@@ -1,1 +1,3 @@
-#include <stdio.h>
+#pragma once
+
+#include <stdio.h> // IWYU pragma: export

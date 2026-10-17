@@ -8,7 +8,7 @@
 
 arena_t *arena_create(arena_params_t params)
 {
-    usize reserved = params.reserv_size + ARENA_METADATA_SIZE;
+    usize reserved = params.reserve_size + ARENA_METADATA_SIZE;
     usize committed = params.commit_size + ARENA_METADATA_SIZE;
     reserved = ALIGN_POW2(reserved, PAGE_SIZE);
     committed = ALIGN_POW2(committed, PAGE_SIZE);

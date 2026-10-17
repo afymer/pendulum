@@ -5,11 +5,21 @@
 // units
 #include "base/base_inc.c"
 #include "math/math_inc.c"
-#include "math/math_vec.h"
 
 int main()
 {
-    vec2f32 v = v2f32(0.f, 0.f);
-    print_v2f32(v);
+    arena_t *arena = arena_create((arena_params_t){
+        .reserve_size = ARENA_DEFAULT_RESERVE_SIZE,
+        .commit_size = ARENA_DEFAULT_COMMIT_SIZE,
+    });
+    matf32 m1 = id_matf32(arena, 2);
+    matf32 m2 = create_matf32(arena, 2, 2);
+    scale_matf32(arena, m1, 2.0f);
+    MAT_SET(m2, 0, 0, 1.0f);
+    MAT_SET(m2, 0, 1, 2.0f);
+    MAT_SET(m2, 1, 0, 3.0f);
+    MAT_SET(m2, 1, 1, 4.0f);
+    matf32 res = mul_matf32(arena, m1, m2);
+    print_matf32(res);
     return 0;
 }
