@@ -56,6 +56,7 @@ static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, u
     linux_wayland_window_t *window = data;
     xdg_surface_ack_configure(xdg_surface, serial);
     window->configured = true;
+    window->base.needs_redraw = true;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -87,42 +88,93 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .close = xdg_toplevel_close,
 };
 
-static struct wl_buffer *create_buffer(linux_wayland_window_t *window, const char *title)
+static void buffer_release(void *data, struct wl_buffer *buffer)
+{
+    (void)buffer;
+    linux_wayland_buffer_t *slot = data;
+    slot->busy = false;
+}
+
+static const struct wl_buffer_listener buffer_listener = {
+    .release = buffer_release,
+};
+
+static void buffer_destroy(linux_wayland_buffer_t *slot)
+{
+    if (slot->buffer)
+        wl_buffer_destroy(slot->buffer);
+    if (slot->framebuffer.pixels)
+        munmap(slot->framebuffer.pixels, slot->size);
+    *slot = (linux_wayland_buffer_t){};
+}
+
+static bool buffer_create(linux_wayland_window_t *window, linux_wayland_buffer_t *slot)
 {
     i32 width = window->base.width;
     i32 height = window->base.height;
     i32 stride = width * BYTES_PER_PIXEL;
     usize size = (usize)stride * (usize)height;
 
-    int fd = memfd_create(title, MFD_CLOEXEC);
+    int fd = memfd_create(window->base.title, MFD_CLOEXEC);
     if (-1 == fd) {
-        return NULL;
+        return false;
     }
     if (-1 == ftruncate(fd, (off_t)size)) {
         close(fd);
-        return NULL;
+        return false;
     }
 
     u32 *pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (MAP_FAILED == pixels) {
         close(fd);
-        return NULL;
+        return false;
     }
 
-    window->framebuffer = (framebuffer_t){
+    struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, (i32)size);
+    slot->buffer =
+        wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+
+    wl_buffer_add_listener(slot->buffer, &buffer_listener, slot);
+    slot->framebuffer = (framebuffer_t){
         .pixels = pixels,
         .width = width,
         .height = height,
         .stride = stride,
     };
-    window->framebuffer_size = size;
+    slot->size = size;
+    slot->busy = false;
+    return true;
+}
 
-    struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, (i32)size);
-    struct wl_buffer *buffer =
-        wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-    return buffer;
+static linux_wayland_buffer_t *buffer_acquire(linux_wayland_window_t *window)
+{
+    linux_wayland_buffer_t *slot = NULL;
+    while (NULL == slot) {
+        for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
+            if (!window->buffers[i].busy) {
+                slot = &window->buffers[i];
+                break;
+            }
+        }
+        if (NULL == slot && -1 == wl_display_dispatch(window->display)) {
+            window->base.should_close = true;
+            return NULL;
+        }
+    }
+
+    // Dispatching above may have changed the window size, so compare only now
+    if (slot->framebuffer.width != window->base.width ||
+        slot->framebuffer.height != window->base.height) {
+        buffer_destroy(slot);
+        if (!buffer_create(window, slot)) {
+            LOG_ERROR("cannot create the shm buffer");
+            window->base.should_close = true;
+            return NULL;
+        }
+    }
+    return slot;
 }
 
 void window_destroy(window_t *base)
@@ -138,10 +190,9 @@ void window_destroy(window_t *base)
         xdg_surface_destroy(window->xdg_surface);
     if (window->surface)
         wl_surface_destroy(window->surface);
-    if (window->buffer)
-        wl_buffer_destroy(window->buffer);
-    if (window->framebuffer.pixels)
-        munmap(window->framebuffer.pixels, window->framebuffer_size);
+    for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
+        buffer_destroy(&window->buffers[i]);
+    }
     if (window->shm)
         wl_shm_destroy(window->shm);
     if (window->wm_base)
@@ -201,12 +252,8 @@ window_t *window_create(arena_t *arena, window_params_t params)
         }
     }
 
-    window->buffer = create_buffer(window, params.title);
-    if (NULL == window->buffer) {
-        LOG_ERROR("cannot create the shm buffer");
-        goto fail;
-    }
-
+    // Buffers are created on the first window_framebuffer
+    // The window only becomes visible on the first window_present
     return &window->base;
 
 fail:
@@ -217,18 +264,30 @@ fail:
 framebuffer_t window_framebuffer(window_t *base)
 {
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
-    return window->framebuffer;
+    window->current = buffer_acquire(window);
+    if (NULL == window->current) {
+        return (framebuffer_t){};
+    }
+    base->needs_redraw = false;
+    return window->current->framebuffer;
 }
 
 void window_present(window_t *base)
 {
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
-    framebuffer_t fb = window->framebuffer;
+    linux_wayland_buffer_t *slot = window->current;
+    if (NULL == slot) {
+        return;
+    }
 
-    wl_surface_attach(window->surface, window->buffer, 0, 0);
-    wl_surface_damage_buffer(window->surface, 0, 0, fb.width, fb.height);
+    wl_surface_attach(window->surface, slot->buffer, 0, 0);
+    wl_surface_damage_buffer(window->surface, 0, 0, slot->framebuffer.width,
+                             slot->framebuffer.height);
     wl_surface_commit(window->surface);
     wl_display_flush(window->display);
+
+    slot->busy = true;
+    window->current = NULL;
 }
 
 void window_poll_events(window_t *base)

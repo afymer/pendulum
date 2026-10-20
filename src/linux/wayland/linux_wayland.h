@@ -2,6 +2,16 @@
 
 #include "window/window_inc.h"
 
+#define LINUX_WAYLAND_BUFFER_COUNT 2
+
+typedef struct linux_wayland_buffer_s linux_wayland_buffer_t;
+struct linux_wayland_buffer_s {
+    struct wl_buffer *buffer;
+    framebuffer_t framebuffer;
+    usize size;
+    bool busy;
+};
+
 typedef struct linux_wayland_window_s linux_wayland_window_t;
 struct linux_wayland_window_s {
     window_t base;
@@ -13,8 +23,7 @@ struct linux_wayland_window_s {
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
-    struct wl_buffer *buffer;
-    framebuffer_t framebuffer; // mapping of the buffer, fixed at the first configure size
-    usize framebuffer_size;    // in bytes
+    linux_wayland_buffer_t buffers[LINUX_WAYLAND_BUFFER_COUNT];
+    linux_wayland_buffer_t *current; // buffer handed out by window_framebuffer, NULL otherwise
     bool configured;
 };

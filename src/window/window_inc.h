@@ -18,6 +18,7 @@ struct window_s {
     int width;
     int height;
     bool should_close;
+    bool needs_redraw;
 };
 
 window_t *window_create(arena_t *arena, window_params_t params);
