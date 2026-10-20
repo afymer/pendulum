@@ -36,3 +36,13 @@ void *arena_push(arena_t *arena, u64 size, u64 align)
     arena->opl = offset + size;
     return ptr;
 }
+
+arena_temp_t arena_temp_begin(arena_t *arena)
+{
+    return (arena_temp_t){ .arena = arena, .opl = arena->opl };
+}
+
+void arena_temp_end(arena_temp_t temp)
+{
+    temp.arena->opl = temp.opl;
+}

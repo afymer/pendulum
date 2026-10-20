@@ -60,7 +60,18 @@ int main()
         .state = { .theta = 3.1f },
     };
 
-    const f32 gains[4] = { -1.0f, -2.0f, 30.0f, 6.0f };
+    const lqr_weights_t weights = { .q = { 10.0f, 1.0f, 100.0f, 1.0f }, .r = 0.1f };
+    f32 gains[4];
+    arena_t *scratch_arena = arena_create((arena_params_t){
+        .reserve_size = 64 * 1024,
+        .commit_size = 64 * 1024,
+    });
+    u32 design_iterations = lqr_solve(scratch_arena, &pendulum.params, weights, CONTROL_DT, gains);
+    arena_free(scratch_arena);
+    if (0 == design_iterations) {
+        LOG_ERROR("LQR did not converge");
+        return EXIT_FAILURE;
+    }
     controller_feedback_t feedback;
     controller_feedback_init(&feedback, gains);
     controller_t *controller = &feedback.base;
