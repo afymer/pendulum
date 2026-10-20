@@ -10,6 +10,10 @@
 #include "draw/draw_inc.c"
 #include "window/window_inc.c"
 
+#define SIM_DT_NS (1 * NS_PER_MS)
+#define SIM_DT ((f32)SIM_DT_NS / (f32)NS_PER_SEC)
+#define MAX_FRAME_NS (250 * NS_PER_MS)
+
 int main()
 {
     arena_t *arena = arena_create((arena_params_t){
@@ -35,14 +39,29 @@ int main()
         return EXIT_FAILURE;
     }
 
+    u64 last_ns = time_now_ns();
+    u64 acc_ns = 0;
+    f32 rect_x = 0.0f;
+    f32 sx = 1.f;
+
     while (!window->should_close) {
         if (window->needs_redraw) {
+            u64 now_ns = time_now_ns();
+            acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
+            last_ns = now_ns;
+            while (acc_ns >= SIM_DT_NS) {
+                rect_x += sx * 1000.f * SIM_DT;
+                if ((rect_x + 128) >= (f32)window->width) {
+                    sx = -1.f;
+                } else if (rect_x <= 0) {
+                    sx = 1.f;
+                }
+                acc_ns -= SIM_DT_NS;
+            }
+
             framebuffer_t fb = window_framebuffer(window);
             fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
-            i32 rect_w = fb.width / 4;
-            i32 rect_h = fb.height / 4;
-            fill_rect(fb, (fb.width - rect_w) / 2, (fb.height - rect_h) / 2, rect_w, rect_h,
-                      RGB(0x88, 0x88, 0xFF));
+            fill_rect(fb, (i32)rect_x, (fb.height - 64) / 2, 128, 64, RGB(0x88, 0x88, 0xFF));
             window_present(window);
         }
         window_wait_events(window);

@@ -21,3 +21,10 @@ void set_mem(void *ptr, int value, size_t size)
 {
     memset(ptr, value, size);
 }
+
+u64 time_now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (u64)ts.tv_sec * NS_PER_SEC + (u64)ts.tv_nsec;
+}

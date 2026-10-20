@@ -24,6 +24,7 @@ struct linux_wayland_window_s {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
     linux_wayland_buffer_t buffers[LINUX_WAYLAND_BUFFER_COUNT];
-    linux_wayland_buffer_t *current; // buffer handed out by window_framebuffer, NULL otherwise
+    struct wl_callback *frame_callback;
+    linux_wayland_buffer_t *current;
     bool configured;
 };

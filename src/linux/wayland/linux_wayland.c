@@ -88,6 +88,19 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .close = xdg_toplevel_close,
 };
 
+static void frame_done(void *data, struct wl_callback *callback, u32 time)
+{
+    (void)time;
+    linux_wayland_window_t *window = data;
+    wl_callback_destroy(callback);
+    window->frame_callback = NULL;
+    window->base.needs_redraw = true;
+}
+
+static const struct wl_callback_listener frame_listener = {
+    .done = frame_done,
+};
+
 static void buffer_release(void *data, struct wl_buffer *buffer)
 {
     (void)buffer;
@@ -190,6 +203,8 @@ void window_destroy(window_t *base)
         xdg_surface_destroy(window->xdg_surface);
     if (window->surface)
         wl_surface_destroy(window->surface);
+    if (window->frame_callback)
+        wl_callback_destroy(window->frame_callback);
     for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
         buffer_destroy(&window->buffers[i]);
     }
@@ -280,6 +295,10 @@ void window_present(window_t *base)
         return;
     }
 
+    if (NULL == window->frame_callback) {
+        window->frame_callback = wl_surface_frame(window->surface);
+        wl_callback_add_listener(window->frame_callback, &frame_listener, window);
+    }
     wl_surface_attach(window->surface, slot->buffer, 0, 0);
     wl_surface_damage_buffer(window->surface, 0, 0, slot->framebuffer.width,
                              slot->framebuffer.height);
