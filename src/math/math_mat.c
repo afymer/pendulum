@@ -52,7 +52,7 @@ matf32 mul_matf32(arena_t *arena, matf32 a, matf32 b)
     return result;
 }
 
-void scale_matf32(arena_t *arena, matf32 mat, f32 scalar)
+void scale_matf32(matf32 mat, f32 scalar)
 {
     for (u16 i = 0; i < mat.rows * mat.cols; i++) {
         mat.data[i] *= scalar;

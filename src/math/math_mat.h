@@ -16,6 +16,6 @@ matf32 copy_matf32(arena_t *arena, matf32 mat);
 matf32 id_matf32(arena_t *arena, u16 size);
 matf32 add_matf32(arena_t *arena, matf32 a, matf32 b);
 matf32 mul_matf32(arena_t *arena, matf32 a, matf32 b);
-void scale_matf32(arena_t *arena, matf32 mat, f32 scalar);
+void scale_matf32(matf32 mat, f32 scalar);
 
 void print_matf32(matf32 mat);

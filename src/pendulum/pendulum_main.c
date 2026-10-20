@@ -16,7 +16,7 @@ int main()
     });
     matf32 m1 = id_matf32(arena, 2);
     matf32 m2 = create_matf32(arena, 2, 2);
-    scale_matf32(arena, m1, 2.0f);
+    scale_matf32(m1, 2.0f);
     MAT_SET(m2, 0, 0, 1.0f);
     MAT_SET(m2, 0, 1, 2.0f);
     MAT_SET(m2, 1, 0, 3.0f);
