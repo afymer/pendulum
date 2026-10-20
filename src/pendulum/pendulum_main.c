@@ -32,6 +32,9 @@ int main()
     if (NULL == window) {
         return EXIT_FAILURE;
     }
+    while (!window->should_close) {
+        window_wait_events(window);
+    }
     window_destroy(window);
     return EXIT_SUCCESS;
 }

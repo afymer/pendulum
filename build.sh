@@ -15,7 +15,7 @@ if [ ! -f "$WL_GENERATED/xdg-shell-protocol.c" ] || [ "$XDG_SHELL_XML" -nt "$WL_
 fi
 
 cd build
-clang -std=c23 -O0 -g -Wall -Wextra -Wpedantic -I../src \
+clang -std=c23 -D_GNU_SOURCE -O0 -g -Wall -Wextra -Wpedantic -I../src \
       $(pkg-config --cflags wayland-client) \
       ../src/pendulum/pendulum_main.c -o pendulum \
       $(pkg-config --libs wayland-client)

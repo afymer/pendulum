@@ -21,7 +21,8 @@ struct window_s {
 
 window_t *window_create(arena_t *arena, window_params_t params);
 void window_destroy(window_t *window);
-void window_poll_events(window_t *window);
+void window_poll_events(window_t *window); // non-blocking
+void window_wait_events(window_t *window); // blocks until at least one event is handled
 
 #if LINUX
 #include "linux/wayland/linux_wayland.h" // IWYU pragma: keep
