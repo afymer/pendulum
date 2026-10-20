@@ -17,7 +17,7 @@ fi
 clang -std=c23 -D_GNU_SOURCE -O0 -g -Wall -Wextra -Wpedantic -Isrc \
       $(pkg-config --cflags wayland-client) \
       src/pendulum/pendulum_main.c -o build/pendulum \
-      $(pkg-config --libs wayland-client)
+      $(pkg-config --libs wayland-client) -lm
 
 if [[ "$run" == "1" ]]; then
     ./build/pendulum

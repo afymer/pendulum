@@ -2,12 +2,14 @@
 #include "base/base_inc.h"
 #include "math/math_inc.h"
 #include "draw/draw_inc.h"
+#include "sim/sim_inc.h"
 #include "window/window_inc.h"
 
 // units
 #include "base/base_inc.c"
 #include "math/math_inc.c"
 #include "draw/draw_inc.c"
+#include "sim/sim_inc.c"
 #include "window/window_inc.c"
 
 #define SIM_DT_NS (1 * NS_PER_MS)
@@ -41,8 +43,10 @@ int main()
 
     u64 last_ns = time_now_ns();
     u64 acc_ns = 0;
-    f32 rect_x = 0.0f;
-    f32 sx = 1.f;
+    pendulum_t pendulum = {
+        .params = { .length = 1.0f, .gravity = v2f32(0.0f, -9.81f) },
+        .state = { .theta = 3.1f, .omega = 0.0f },
+    };
 
     while (!window->should_close) {
         if (window->needs_redraw) {
@@ -50,18 +54,12 @@ int main()
             acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
             last_ns = now_ns;
             while (acc_ns >= SIM_DT_NS) {
-                rect_x += sx * 1000.f * SIM_DT;
-                if ((rect_x + 128) >= (f32)window->width) {
-                    sx = -1.f;
-                } else if (rect_x <= 0) {
-                    sx = 1.f;
-                }
+                pendulum_step(&pendulum, SIM_DT);
                 acc_ns -= SIM_DT_NS;
             }
 
             framebuffer_t fb = window_framebuffer(window);
             fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
-            fill_rect(fb, (i32)rect_x, (fb.height - 64) / 2, 128, 64, RGB(0x88, 0x88, 0xFF));
             window_present(window);
         }
         window_wait_events(window);

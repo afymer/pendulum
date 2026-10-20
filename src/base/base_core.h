@@ -1,8 +1,11 @@
 #pragma once
 
-#include <stddef.h> // IWYU pragma: export
-#include <stdio.h>  // IWYU pragma: export
-#include <stdlib.h> // IWYU pragma: export
+// IWYU pragma: begin_exports
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+// IWYU pragma: end_exports
 
 // W: side effects
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
