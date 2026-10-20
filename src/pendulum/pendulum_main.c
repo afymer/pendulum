@@ -66,9 +66,9 @@ int main()
             fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
             vec2f32 root = scale_v2f32(v2f32((f32)fb.width, (f32)fb.height), 0.5f);
             vec2f32 bob = add_v2f32(root, mul_matf32_v2f32(world_to_screen, pendulum_position(&pendulum)));
-            draw_line(fb, (i32)root.x, (i32)root.y, (i32)bob.x, (i32)bob.y, 3, RGB(0xCC, 0xCC, 0xCC));
-            fill_circle(fb, (i32)root.x, (i32)root.y, 6, RGB(0xCC, 0xCC, 0xCC));
-            fill_circle(fb, (i32)bob.x, (i32)bob.y, 24, RGB(0x88, 0x88, 0xFF));
+            draw_line(fb, root.x, root.y, bob.x, bob.y, 3.0f, RGB(0xCC, 0xCC, 0xCC));
+            fill_circle(fb, root.x, root.y, 6.0f, RGB(0xCC, 0xCC, 0xCC));
+            fill_circle(fb, bob.x, bob.y, 24.0f, RGB(0x88, 0x88, 0xFF));
             window_present(window);
         }
         window_wait_events(window);
