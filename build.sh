@@ -14,12 +14,10 @@ if [ ! -f "$WL_GENERATED/xdg-shell-protocol.c" ] || [ "$XDG_SHELL_XML" -nt "$WL_
     wayland-scanner private-code "$XDG_SHELL_XML" "$WL_GENERATED/xdg-shell-protocol.c"
 fi
 
-cd build
-clang -std=c23 -D_GNU_SOURCE -O0 -g -Wall -Wextra -Wpedantic -I../src \
+clang -std=c23 -D_GNU_SOURCE -O0 -g -Wall -Wextra -Wpedantic -Isrc \
       $(pkg-config --cflags wayland-client) \
-      ../src/pendulum/pendulum_main.c -o pendulum \
+      src/pendulum/pendulum_main.c -o build/pendulum \
       $(pkg-config --libs wayland-client)
-cd ..
 
 if [[ "$run" == "1" ]]; then
     ./build/pendulum

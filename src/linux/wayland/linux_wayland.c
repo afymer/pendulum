@@ -165,7 +165,7 @@ window_t *window_create(arena_t *arena, window_params_t params)
 
     window->display = wl_display_connect(NULL);
     if (NULL == window->display) {
-        printf("cannot connect to the wayland display");
+        LOG_ERROR("cannot connect to the wayland display");
         goto fail;
     }
 
@@ -175,7 +175,7 @@ window_t *window_create(arena_t *arena, window_params_t params)
     wl_display_roundtrip(window->display);
 
     if (NULL == window->compositor || NULL == window->shm || NULL == window->wm_base) {
-        printf("compositor lacks wl_compositor, wl_shm or xdg_wm_base");
+        LOG_ERROR("compositor lacks wl_compositor, wl_shm or xdg_wm_base");
         goto fail;
     }
     xdg_wm_base_add_listener(window->wm_base, &wm_base_listener, window);
@@ -192,14 +192,14 @@ window_t *window_create(arena_t *arena, window_params_t params)
     wl_surface_commit(window->surface);
     while (!window->configured) {
         if (-1 == wl_display_dispatch(window->display)) {
-            printf("lost connection waiting for first configure");
+            LOG_ERROR("lost connection waiting for first configure");
             goto fail;
         }
     }
 
     window->buffer = create_solid_buffer(window, WINDOW_BACKGROUND_COLOR, params.title);
     if (NULL == window->buffer) {
-        printf("cannot create the shm buffer");
+        LOG_ERROR("cannot create the shm buffer");
         goto fail;
     }
     wl_surface_attach(window->surface, window->buffer, 0, 0);
