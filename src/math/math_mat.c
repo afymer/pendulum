@@ -1,5 +1,4 @@
 #include "math_mat.h"
-#include <string.h>
 
 matf32 create_matf32(arena_t *arena, u16 rows, u16 cols)
 {
@@ -23,6 +22,17 @@ matf32 id_matf32(arena_t *arena, u16 size)
     for (u16 i = 0; i < size; i++) {
         for (u16 j = 0; j < size; j++) {
             mat.data[i * size + j] = (i == j) ? 1.0f : 0.0f;
+        }
+    }
+    return mat;
+}
+
+matf32 diag_matf32(arena_t *arena, u16 size, f32 value)
+{
+    matf32 mat = create_matf32(arena, size, size);
+    for (u16 i = 0; i < size; i++) {
+        for (u16 j = 0; j < size; j++) {
+            mat.data[i * size + j] = (i == j) ? value : 0.0f;
         }
     }
     return mat;
@@ -67,4 +77,11 @@ void print_matf32(matf32 mat)
         }
         printf("\n");
     }
+}
+
+vec2f32 mul_matf32_v2f32(matf32 mat, vec2f32 v)
+{
+    // TODO: add size assertion
+    return v2f32(MAT_GET(mat, 0, 0) * v.x + MAT_GET(mat, 0, 1) * v.y,
+                 MAT_GET(mat, 1, 0) * v.x + MAT_GET(mat, 1, 1) * v.y);
 }

@@ -48,6 +48,10 @@ int main()
         .state = { .theta = 3.1f, .omega = 0.0f },
     };
 
+    const f32 pixels_per_meter = 400.0f;
+    matf32 world_to_screen = diag_matf32(arena, 2, pixels_per_meter);
+    MAT_GET(world_to_screen, 1, 1) *= -1.f;
+
     while (!window->should_close) {
         if (window->needs_redraw) {
             u64 now_ns = time_now_ns();
@@ -60,6 +64,11 @@ int main()
 
             framebuffer_t fb = window_framebuffer(window);
             fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
+            vec2f32 root = scale_v2f32(v2f32((f32)fb.width, (f32)fb.height), 0.5f);
+            vec2f32 bob = add_v2f32(root, mul_matf32_v2f32(world_to_screen, pendulum_position(&pendulum)));
+            draw_line(fb, (i32)root.x, (i32)root.y, (i32)bob.x, (i32)bob.y, 3, RGB(0xCC, 0xCC, 0xCC));
+            fill_circle(fb, (i32)root.x, (i32)root.y, 6, RGB(0xCC, 0xCC, 0xCC));
+            fill_circle(fb, (i32)bob.x, (i32)bob.y, 24, RGB(0x88, 0x88, 0xFF));
             window_present(window);
         }
         window_wait_events(window);
