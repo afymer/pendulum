@@ -1,11 +1,13 @@
 // headers
 #include "base/base_inc.h"
 #include "math/math_inc.h"
+#include "draw/draw_inc.h"
 #include "window/window_inc.h"
 
 // units
 #include "base/base_inc.c"
 #include "math/math_inc.c"
+#include "draw/draw_inc.c"
 #include "window/window_inc.c"
 
 int main()
@@ -32,6 +34,15 @@ int main()
     if (NULL == window) {
         return EXIT_FAILURE;
     }
+
+    framebuffer_t fb = window_framebuffer(window);
+    fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
+    i32 rect_w = fb.width / 4;
+    i32 rect_h = fb.height / 4;
+    fill_rect(fb, (fb.width - rect_w) / 2, (fb.height - rect_h) / 2, rect_w, rect_h,
+              RGB(0x88, 0x88, 0xFF));
+    window_present(window);
+
     while (!window->should_close) {
         window_wait_events(window);
     }

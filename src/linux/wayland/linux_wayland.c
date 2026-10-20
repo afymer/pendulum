@@ -11,7 +11,6 @@
 #define XDG_WM_BASE_VERSION 1
 #define WL_SHM_VERSION 1
 
-#define WINDOW_BACKGROUND_COLOR RGB(0x21, 0x21, 0x21)
 #define BYTES_PER_PIXEL 4
 
 static void registry_global(void *data, struct wl_registry *registry, u32 name,
@@ -88,8 +87,7 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .close = xdg_toplevel_close,
 };
 
-static struct wl_buffer *create_solid_buffer(linux_wayland_window_t *window, u32 color,
-                                             const char *title)
+static struct wl_buffer *create_buffer(linux_wayland_window_t *window, const char *title)
 {
     i32 width = window->base.width;
     i32 height = window->base.height;
@@ -110,10 +108,14 @@ static struct wl_buffer *create_solid_buffer(linux_wayland_window_t *window, u32
         close(fd);
         return NULL;
     }
-    for (usize i = 0; i < size / BYTES_PER_PIXEL; i++) {
-        pixels[i] = color;
-    }
-    munmap(pixels, size); // the compositor maps the fd itself
+
+    window->framebuffer = (framebuffer_t){
+        .pixels = pixels,
+        .width = width,
+        .height = height,
+        .stride = stride,
+    };
+    window->framebuffer_size = size;
 
     struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, (i32)size);
     struct wl_buffer *buffer =
@@ -138,6 +140,8 @@ void window_destroy(window_t *base)
         wl_surface_destroy(window->surface);
     if (window->buffer)
         wl_buffer_destroy(window->buffer);
+    if (window->framebuffer.pixels)
+        munmap(window->framebuffer.pixels, window->framebuffer_size);
     if (window->shm)
         wl_shm_destroy(window->shm);
     if (window->wm_base)
@@ -197,20 +201,34 @@ window_t *window_create(arena_t *arena, window_params_t params)
         }
     }
 
-    window->buffer = create_solid_buffer(window, WINDOW_BACKGROUND_COLOR, params.title);
+    window->buffer = create_buffer(window, params.title);
     if (NULL == window->buffer) {
         LOG_ERROR("cannot create the shm buffer");
         goto fail;
     }
-    wl_surface_attach(window->surface, window->buffer, 0, 0);
-    wl_surface_commit(window->surface);
-    wl_display_flush(window->display);
 
     return &window->base;
 
 fail:
     window_destroy(&window->base);
     return NULL;
+}
+
+framebuffer_t window_framebuffer(window_t *base)
+{
+    linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
+    return window->framebuffer;
+}
+
+void window_present(window_t *base)
+{
+    linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
+    framebuffer_t fb = window->framebuffer;
+
+    wl_surface_attach(window->surface, window->buffer, 0, 0);
+    wl_surface_damage_buffer(window->surface, 0, 0, fb.width, fb.height);
+    wl_surface_commit(window->surface);
+    wl_display_flush(window->display);
 }
 
 void window_poll_events(window_t *base)

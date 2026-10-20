@@ -14,5 +14,7 @@ struct linux_wayland_window_s {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
     struct wl_buffer *buffer;
+    framebuffer_t framebuffer; // mapping of the buffer, fixed at the first configure size
+    usize framebuffer_size;    // in bytes
     bool configured;
 };
