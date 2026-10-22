@@ -5,6 +5,7 @@
 #include "sim/sim_inc.h"
 #include "controller/controller_inc.h"
 #include "window/window_inc.h"
+#include "ui/ui_inc.h"
 
 // units
 #include "base/base_inc.c"
@@ -21,7 +22,7 @@
 #define TARGET_SWITCH_S 6.0f
 #define MAX_FRAME_NS (250 * NS_PER_MS)
 
-int main()
+int main(void)
 {
     arena_t *arena = arena_create((arena_params_t){
         .reserve_size = ARENA_DEFAULT_RESERVE_SIZE,
@@ -36,15 +37,6 @@ int main()
     MAT_SET(m2, 1, 1, 4.0f);
     matf32 res = mul_matf32(arena, m1, m2);
     print_matf32(res);
-
-    window_t *window = window_create(arena, (window_params_t){
-                                                .title = "pendulum",
-                                                .width = 1920,
-                                                .height = 1080,
-                                            });
-    if (NULL == window) {
-        return EXIT_FAILURE;
-    }
 
     u64 last_ns = time_now_ns();
     u64 acc_ns = 0;
@@ -81,46 +73,47 @@ int main()
     f32 target_x = 0.0f;
     f32 force = 0.0f;
 
-    const f32 pixels_per_meter = 400.0f;
-    matf32 world_to_screen = diag_matf32(arena, 2, pixels_per_meter);
-    MAT_GET(world_to_screen, 1, 1) *= -1.f;
+    ui_context_t *cx = ui_context_create();
 
-    while (!window->should_close) {
-        if (window->needs_redraw) {
-            u64 now_ns = time_now_ns();
-            acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
-            last_ns = now_ns;
-            while (acc_ns >= SIM_DT_NS) {
-                target_x =
-                    fmodf(sim_time, 2.0f * TARGET_SWITCH_S) < TARGET_SWITCH_S ? 1.0f : -1.0f;
-                if (sim_ticks % CONTROL_DIVIDER == 0) {
-                    force = controller_update(controller, pendulum_measure(&pendulum), target_x,
-                                              CONTROL_DT);
-                }
-                pendulum_step(&pendulum, force, SIM_DT);
-                sim_ticks++;
-                sim_time += SIM_DT;
-                acc_ns -= SIM_DT_NS;
+    counter_state_t initial_state = { .count = 0 };
+    ui_handle_t counter_handle = ui_slotmap_insert(cx->models, &initial_state);
+
+    ui_window_t *window = ui_window_create(cx, 800, 600, "Counter App");
+    ui_window_set_root_view(window, counter_view_render, &counter_handle);
+
+    ui_notify(cx, counter_handle);
+
+    while (ui_window_is_open(window)) {
+        ui_event_t event = ui_wait_for_event();
+        ui_dispatch_event(cx, window, &event);
+
+        u64 now_ns = time_now_ns();
+        acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
+        last_ns = now_ns;
+        while (acc_ns >= SIM_DT_NS) {
+            target_x = fmodf(sim_time, 2.0f * TARGET_SWITCH_S) < TARGET_SWITCH_S ? 1.0f : -1.0f;
+            if (sim_ticks % CONTROL_DIVIDER == 0) {
+                force = controller_update(controller, pendulum_measure(&pendulum), target_x,
+                                          CONTROL_DT);
             }
-
-            framebuffer_t fb = window_framebuffer(window);
-            fill_rect(fb, 0, 0, fb.width, fb.height, RGB(0x21, 0x21, 0x21));
-            vec2f32 origin = scale_v2f32(v2f32((f32)fb.width, (f32)fb.height), 0.5f);
-            vec2f32 root = add_v2f32(
-                origin, mul_matf32_v2f32(world_to_screen, v2f32(pendulum.state.x, 0.0f)));
-            vec2f32 bob =
-                add_v2f32(origin, mul_matf32_v2f32(world_to_screen, pendulum_position(&pendulum)));
-            vec2f32 target =
-                add_v2f32(origin, mul_matf32_v2f32(world_to_screen, v2f32(target_x, 0.0f)));
-            draw_line(fb, 0.0f, origin.y, (f32)fb.width, origin.y, 2.0f, RGB(0x55, 0x55, 0x55));
-            fill_rect(fb, (i32)target.x - 2, (i32)origin.y - 20, 4, 40, RGB(0x66, 0xAA, 0x66));
-            fill_rect(fb, (i32)root.x - 50, (i32)root.y - 15, 100, 30, RGB(0x99, 0x99, 0x99));
-            draw_line(fb, root.x, root.y, bob.x, bob.y, 3.0f, RGB(0xCC, 0xCC, 0xCC));
-            fill_circle(fb, bob.x, bob.y, 8.0f, RGB(0x88, 0x88, 0xFF));
-            window_present(window);
+            pendulum_step(&pendulum, force, SIM_DT);
+            sim_ticks++;
+            sim_time += SIM_DT;
+            acc_ns -= SIM_DT_NS;
         }
-        window_wait_events(window);
+
+        if (ui_context_is_dirty(cx)) {
+            ui_frame_begin(cx);
+            window->root_view_fn(cx, window->root_view_user_data);
+            ui_layout_solve(cx->root_element, window->width, window->height);
+            ui_prepaint(cx->root_element);
+            ui_paint(cx->root_element, window->gpu_draw_list);
+            ui_gpu_submit(window->gpu_draw_list);
+            ui_frame_end(cx);
+            ui_context_clear_dirty(cx);
+        }
     }
-    window_destroy(window);
-    return EXIT_SUCCESS;
+
+    ui_context_destroy(cx);
+    return 0;
 }
