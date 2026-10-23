@@ -22,6 +22,10 @@
 #define TARGET_SWITCH_S 6.0f
 #define MAX_FRAME_NS (250 * NS_PER_MS)
 
+typedef struct counter_state_s {
+    i32 count;
+} counter_state_t;
+
 int main(void)
 {
     arena_t *arena = arena_create((arena_params_t){
@@ -78,14 +82,15 @@ int main(void)
     counter_state_t initial_state = { .count = 0 };
     ui_handle_t counter_handle = ui_slotmap_insert(cx->models, &initial_state);
 
-    ui_window_t *window = ui_window_create(cx, 800, 600, "Counter App");
-    ui_window_set_root_view(window, counter_view_render, &counter_handle);
+    window_t *window = window_create(
+        cx, (window_params_t){ .width = 800, .height = 600, .title = "Counter App" });
+    // TODO: set root view
 
     ui_notify(cx, counter_handle);
 
-    while (ui_window_is_open(window)) {
-        ui_event_t event = ui_wait_for_event();
-        ui_dispatch_event(cx, window, &event);
+    while (window_is_open(window)) {
+        ui_event_t event = wait_for_event();
+        dispatch_event(cx, window, &event);
 
         u64 now_ns = time_now_ns();
         acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);

@@ -13,6 +13,30 @@
 
 #define BYTES_PER_PIXEL 4
 
+static linux_wayland_window_t *g_active_wayland_window = NULL;
+
+static void linux_wayland_event_push(linux_wayland_window_t *window, const ui_event_t *ev)
+{
+    linux_wayland_event_queue_t *q = &window->event_queue;
+    if (q->count < LINUX_WAYLAND_EVENT_QUEUE_CAPACITY) {
+        q->events[q->tail] = *ev;
+        q->tail = (q->tail + 1) % LINUX_WAYLAND_EVENT_QUEUE_CAPACITY;
+        q->count++;
+    }
+}
+
+static bool linux_wayland_event_pop(linux_wayland_window_t *window, ui_event_t *out)
+{
+    linux_wayland_event_queue_t *q = &window->event_queue;
+    if (0 == q->count) {
+        return false;
+    }
+    *out = q->events[q->head];
+    q->head = (q->head + 1) % LINUX_WAYLAND_EVENT_QUEUE_CAPACITY;
+    q->count--;
+    return true;
+}
+
 static void registry_global(void *data, struct wl_registry *registry, u32 name,
                             const char *interface, u32 version)
 {
@@ -56,7 +80,7 @@ static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, u
     linux_wayland_window_t *window = data;
     xdg_surface_ack_configure(xdg_surface, serial);
     window->configured = true;
-    window->base.needs_redraw = true;
+    window->base.is_dirty = true;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -71,8 +95,17 @@ static void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, i3
     linux_wayland_window_t *window = data;
 
     if (width > 0 && height > 0) {
-        window->base.width = width;
-        window->base.height = height;
+        if (window->base.width != width || window->base.height != height) {
+            window->base.width = width;
+            window->base.height = height;
+            linux_wayland_event_push(window, &(ui_event_t){
+                                                 .kind = UI_EVENT_WINDOW_RESIZE,
+                                                 .resize = {
+                                                     .width = width,
+                                                     .height = height,
+                                                 },
+                                             });
+        }
     }
 }
 
@@ -80,7 +113,11 @@ static void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel)
 {
     (void)toplevel;
     linux_wayland_window_t *window = data;
+    window->base.is_open = false;
     window->base.should_close = true;
+    linux_wayland_event_push(window, &(ui_event_t){
+                                         .kind = UI_EVENT_WINDOW_CLOSE,
+                                     });
 }
 
 static const struct xdg_toplevel_listener xdg_toplevel_listener = {
@@ -94,7 +131,10 @@ static void frame_done(void *data, struct wl_callback *callback, u32 time)
     linux_wayland_window_t *window = data;
     wl_callback_destroy(callback);
     window->frame_callback = NULL;
-    window->base.needs_redraw = true;
+    window->base.is_dirty = true;
+    linux_wayland_event_push(window, &(ui_event_t){
+                                         .kind = UI_EVENT_WINDOW_REDRAW,
+                                     });
 }
 
 static const struct wl_callback_listener frame_listener = {
@@ -172,6 +212,7 @@ static linux_wayland_buffer_t *buffer_acquire(linux_wayland_window_t *window)
             }
         }
         if (NULL == slot && -1 == wl_display_dispatch(window->display)) {
+            window->base.is_open = false;
             window->base.should_close = true;
             return NULL;
         }
@@ -183,6 +224,7 @@ static linux_wayland_buffer_t *buffer_acquire(linux_wayland_window_t *window)
         buffer_destroy(slot);
         if (!buffer_create(window, slot)) {
             LOG_ERROR("cannot create the shm buffer");
+            window->base.is_open = false;
             window->base.should_close = true;
             return NULL;
         }
@@ -196,6 +238,9 @@ void window_destroy(window_t *base)
         return;
     }
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
+    if (g_active_wayland_window == window) {
+        g_active_wayland_window = NULL;
+    }
 
     if (window->xdg_toplevel)
         xdg_toplevel_destroy(window->xdg_toplevel);
@@ -219,18 +264,36 @@ void window_destroy(window_t *base)
     if (window->display)
         wl_display_disconnect(window->display);
 
-    *window = (linux_wayland_window_t){};
+    arena_t *arena = window->arena;
+    if (arena) {
+        arena_free(arena);
+    }
 }
 
-window_t *window_create(arena_t *arena, window_params_t params)
+window_t *window_create(ui_context_t *cx, window_params_t params)
 {
+    (void)cx;
+    arena_t *arena = arena_create((arena_params_t){
+        .reserve_size = 64 * 1024,
+        .commit_size = 64 * 1024,
+    });
+    if (NULL == arena) {
+        return NULL;
+    }
+
     linux_wayland_window_t *window = PUSH_STRUCT(arena, linux_wayland_window_t);
     *window = (linux_wayland_window_t){
         .base = {
             .title = params.title,
             .width = params.width,
             .height = params.height,
+            .scale_factor = 1.0f,
+            .root_view = UI_HANDLE_INVALID,
+            .is_open = true,
+            .should_close = false,
+            .is_dirty = false,
         },
+        .arena = arena,
     };
 
     window->display = wl_display_connect(NULL);
@@ -267,13 +330,38 @@ window_t *window_create(arena_t *arena, window_params_t params)
         }
     }
 
-    // Buffers are created on the first window_framebuffer
-    // The window only becomes visible on the first window_present
+    g_active_wayland_window = window;
     return &window->base;
 
 fail:
     window_destroy(&window->base);
     return NULL;
+}
+
+ui_event_t wait_for_event(void)
+{
+    linux_wayland_window_t *window = g_active_wayland_window;
+    if (NULL == window || NULL == window->display) {
+        return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
+    }
+
+    ui_event_t ev = { 0 };
+    if (linux_wayland_event_pop(window, &ev)) {
+        return ev;
+    }
+
+    while (window->base.is_open) {
+        if (-1 == wl_display_dispatch(window->display)) {
+            window->base.is_open = false;
+            window->base.should_close = true;
+            return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
+        }
+        if (linux_wayland_event_pop(window, &ev)) {
+            return ev;
+        }
+    }
+
+    return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
 }
 
 framebuffer_t window_framebuffer(window_t *base)
@@ -283,7 +371,7 @@ framebuffer_t window_framebuffer(window_t *base)
     if (NULL == window->current) {
         return (framebuffer_t){};
     }
-    base->needs_redraw = false;
+    base->is_dirty = false;
     return window->current->framebuffer;
 }
 
@@ -328,6 +416,7 @@ void window_poll_events(window_t *base)
 
     if (-1 == wl_display_dispatch_pending(display)) {
         base->should_close = true;
+        base->is_open = false;
     }
 }
 
@@ -336,5 +425,6 @@ void window_wait_events(window_t *base)
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
     if (-1 == wl_display_dispatch(window->display)) {
         base->should_close = true;
+        base->is_open = false;
     }
 }
