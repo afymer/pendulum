@@ -270,7 +270,7 @@ void window_destroy(window_t *base)
     }
 }
 
-window_t *window_create(ui_context_t *cx, window_params_t params)
+window_t *window_create(ui_app_t *app, window_params_t params)
 {
     arena_t *arena = arena_create((arena_params_t){
         .reserve_size = 64 * 1024,
@@ -330,7 +330,7 @@ window_t *window_create(ui_context_t *cx, window_params_t params)
     }
 
     g_active_wayland_window = window;
-    ui_context_add_window(cx, &window->base);
+    ui_app_add_window(app, &window->base);
     return &window->base;
 
 fail:

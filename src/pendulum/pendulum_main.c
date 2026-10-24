@@ -29,13 +29,13 @@ typedef struct counter_state_s {
     i32 count;
 } counter_state_t;
 
-static void counter_render(void *state, ui_window_cx_t *wcx)
+static void counter_render(void *self, ui_cx_t *cx)
 {
-    (void)state;
-    (void)wcx;
+    (void)self;
+    (void)cx;
 }
 
-static const ui_view_vtable_t counter_view_vtable = { .render = counter_render };
+static const ui_view_vtable_t counter_view_vtable = { .render = counter_render, .destroy = NULL };
 
 int main(void)
 {
@@ -88,21 +88,21 @@ int main(void)
     f32 target_x = 0.0f;
     f32 force = 0.0f;
 
-    ui_context_t *cx = ui_context_create();
+    ui_app_t *app = ui_app_create();
 
     counter_state_t counter_state = { .count = 0 };
-    ui_view_t counter_view = { .vtable = &counter_view_vtable, .state = &counter_state };
-    ui_handle_t counter_handle = ui_slotmap_insert(cx->views, &counter_view);
+    ui_view_t counter_view = { .entity = &counter_state, .vtable = &counter_view_vtable };
+    ui_handle_t counter_handle = ui_slotmap_insert(app->views, &counter_view);
 
     window_t *window = window_create(
-        cx, (window_params_t){ .width = 800, .height = 600, .title = "Counter App" });
+        app, (window_params_t){ .width = 800, .height = 600, .title = "Counter App" });
     window->root_view = counter_handle;
 
-    ui_notify(cx, counter_handle);
+    ui_notify(app, counter_handle);
 
     while (window_is_open(window)) {
         ui_event_t event = wait_for_event();
-        dispatch_event(cx, window, &event);
+        dispatch_event(app, window, &event);
 
         u64 now_ns = time_now_ns();
         acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
@@ -119,18 +119,9 @@ int main(void)
             acc_ns -= SIM_DT_NS;
         }
 
-        if (window->is_dirty) {
-            ui_frame_begin(cx);
-            ui_window_cx_t wcx = { .app = cx, .window = window };
-            ui_view_t *view = ui_slotmap_get(cx->views, window->root_view);
-            if (view && view->vtable->render) {
-                view->vtable->render(view->state, &wcx);
-            }
-            ui_frame_end(cx);
-            window->is_dirty = false;
-        }
+        ui_window_render(app, window);
     }
 
-    ui_context_destroy(cx);
+    ui_app_destroy(app);
     return 0;
 }

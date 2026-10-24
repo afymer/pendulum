@@ -5,9 +5,9 @@ bool window_is_open(const window_t *window)
     return NULL != window && window->is_open;
 }
 
-void dispatch_event(ui_context_t *cx, window_t *window, const ui_event_t *event)
+void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event)
 {
-    (void)cx;
+    (void)app;
     if (NULL == window || NULL == event) {
         return;
     }
