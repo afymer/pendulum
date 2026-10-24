@@ -14,6 +14,7 @@
 #include "sim/sim_inc.c"
 #include "controller/controller_inc.c"
 #include "window/window_inc.c"
+#include "ui/ui_inc.c"
 
 #define SIM_DT_NS (1 * NS_PER_MS)
 #define SIM_DT ((f32)SIM_DT_NS / (f32)NS_PER_SEC)
@@ -25,6 +26,14 @@
 typedef struct counter_state_s {
     i32 count;
 } counter_state_t;
+
+static void counter_render(void *state, ui_window_cx_t *wcx)
+{
+    (void)state;
+    (void)wcx;
+}
+
+static const ui_view_vtable_t counter_view_vtable = { .render = counter_render };
 
 int main(void)
 {
@@ -79,12 +88,13 @@ int main(void)
 
     ui_context_t *cx = ui_context_create();
 
-    counter_state_t initial_state = { .count = 0 };
-    ui_handle_t counter_handle = ui_slotmap_insert(cx->models, &initial_state);
+    counter_state_t counter_state = { .count = 0 };
+    ui_view_t counter_view = { .vtable = &counter_view_vtable, .state = &counter_state };
+    ui_handle_t counter_handle = ui_slotmap_insert(cx->views, &counter_view);
 
     window_t *window = window_create(
         cx, (window_params_t){ .width = 800, .height = 600, .title = "Counter App" });
-    // TODO: set root view
+    window->root_view = counter_handle;
 
     ui_notify(cx, counter_handle);
 
@@ -107,15 +117,15 @@ int main(void)
             acc_ns -= SIM_DT_NS;
         }
 
-        if (ui_context_is_dirty(cx)) {
+        if (window->is_dirty) {
             ui_frame_begin(cx);
-            window->root_view_fn(cx, window->root_view_user_data);
-            ui_layout_solve(cx->root_element, window->width, window->height);
-            ui_prepaint(cx->root_element);
-            ui_paint(cx->root_element, window->gpu_draw_list);
-            ui_gpu_submit(window->gpu_draw_list);
+            ui_window_cx_t wcx = { .app = cx, .window = window };
+            ui_view_t *view = ui_slotmap_get(cx->views, window->root_view);
+            if (view && view->vtable->render) {
+                view->vtable->render(view->state, &wcx);
+            }
             ui_frame_end(cx);
-            ui_context_clear_dirty(cx);
+            window->is_dirty = false;
         }
     }
 
