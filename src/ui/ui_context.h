@@ -6,6 +6,7 @@
 #define UI_MAX_VIEWS 256
 #define UI_MAX_ENTITIES 256
 #define UI_ENTITY_SIZE 64
+#define UI_ARENA_SIZE (1024 * 1024)
 
 typedef struct window_s window_t;
 typedef struct ui_context_s ui_context_t;

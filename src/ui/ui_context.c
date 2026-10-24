@@ -4,8 +4,8 @@
 ui_context_t *ui_context_create(void)
 {
     arena_t *arena = arena_create((arena_params_t){
-        .reserve_size = ARENA_DEFAULT_RESERVE_SIZE,
-        .commit_size = ARENA_DEFAULT_COMMIT_SIZE,
+        .reserve_size = UI_ARENA_SIZE,
+        .commit_size = UI_ARENA_SIZE,
     });
     if (NULL == arena) {
         return NULL;
@@ -14,8 +14,8 @@ ui_context_t *ui_context_create(void)
     *cx = (ui_context_t){ .arena = arena };
 
     cx->frame_arena = arena_create((arena_params_t){
-        .reserve_size = ARENA_DEFAULT_RESERVE_SIZE,
-        .commit_size = ARENA_DEFAULT_COMMIT_SIZE,
+        .reserve_size = UI_ARENA_SIZE,
+        .commit_size = UI_ARENA_SIZE,
     });
     cx->entities = ui_slotmap_create(arena, UI_MAX_ENTITIES, UI_ENTITY_SIZE);
     cx->views = ui_slotmap_create(arena, UI_MAX_VIEWS, sizeof(ui_view_t));
