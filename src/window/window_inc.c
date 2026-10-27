@@ -31,6 +31,8 @@ void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event)
         window->width = event->resize.width;
         window->height = event->resize.height;
         window->is_dirty = true;
+        window->needs_full_redraw = true;
+        window->full_redraw_buffers = LINUX_WAYLAND_BUFFER_COUNT;
     } break;
     case UI_EVENT_WINDOW_REDRAW: {
         window->is_dirty = true;

@@ -2,6 +2,7 @@
 
 #include "layout/layout_core.h"
 #include "math/math_vec.h"
+#include "ui/ui_slotmap.h"
 
 typedef struct ui_cx_s ui_cx_t;
 
@@ -25,4 +26,7 @@ struct ui_element_s {
 
     u32 background;
     void (*custom_draw)(ui_element_t *el, ui_cx_t *cx);
+    void *user_data;
+    ui_handle_t view_handle;
+    bool is_dirty;
 };

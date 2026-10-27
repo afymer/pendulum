@@ -22,6 +22,7 @@ struct linux_wayland_buffer_s {
     framebuffer_t framebuffer;
     usize capacity;
     bool busy;
+    bool needs_full_redraw;
 };
 
 typedef struct linux_wayland_window_s linux_wayland_window_t;
@@ -45,4 +46,5 @@ struct linux_wayland_window_s {
     linux_wayland_buffer_t *current;
     linux_wayland_event_queue_t event_queue;
     bool configured;
+    bool has_damage;
 };

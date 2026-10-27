@@ -24,6 +24,7 @@ bool poll_event(ui_event_t *event);
 void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event);
 
 framebuffer_t window_framebuffer(window_t *window);
+void window_damage(window_t *window, i32 x, i32 y, i32 w, i32 h);
 void window_present(window_t *window);
 
 #if LINUX

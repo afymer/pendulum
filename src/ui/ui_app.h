@@ -1,5 +1,6 @@
 #pragma once
 
+#include "draw/draw_core.h"
 #include "ui/ui_element.h"
 #include "ui/ui_slotmap.h"
 #include "window/window_core.h"
@@ -9,6 +10,8 @@
 #define UI_MAX_ENTITIES 256
 #define UI_ENTITY_SIZE 64
 #define UI_ARENA_SIZE (1024 * 1024)
+#define UI_VIEW_ARENA_SIZE (64 * 1024)
+#define UI_VIEW_COMMIT_SIZE 4096
 #define UI_MAX_PARENT_DEPTH 64
 
 typedef struct ui_app_s ui_app_t;
@@ -27,9 +30,12 @@ struct ui_app_s {
 struct ui_cx_s {
     ui_app_t *app;
     window_t *window;
+    arena_t *arena;
+    framebuffer_t fb;
     ui_element_t *root;
     ui_element_t *parent_stack[UI_MAX_PARENT_DEPTH];
     u32 parent_depth;
+    ui_handle_t current_view;
 };
 
 typedef void (*ui_view_render_fn)(void *self, ui_cx_t *cx);
@@ -44,17 +50,25 @@ typedef struct ui_view_s ui_view_t;
 struct ui_view_s {
     void *entity;
     const ui_view_vtable_t *vtable;
+    arena_t *arena;
+    ui_element_t *container;
+    ui_element_t *root_element;
+    u32 dirty_buffers;
+    bool is_dirty;
 };
 
 ui_app_t *ui_app_create(void);
 void ui_app_destroy(ui_app_t *app);
 void ui_app_add_window(ui_app_t *app, window_t *window);
 
+ui_handle_t ui_view_create(ui_app_t *app, void *entity, const ui_view_vtable_t *vtable);
+void ui_view_destroy(ui_app_t *app, ui_handle_t handle);
 void ui_notify(ui_app_t *app, ui_handle_t handle);
 
 ui_element_t *ui_push_container(ui_cx_t *cx, layout_style_t style, u32 background);
 void ui_pop(ui_cx_t *cx);
 ui_element_t *ui_append_child(ui_cx_t *cx, layout_style_t style, u32 background);
+ui_element_t *ui_append_view(ui_cx_t *cx, ui_handle_t view_handle, layout_style_t style);
 
 void ui_layout_solve(ui_element_t *root, f32 width, f32 height);
 void ui_element_paint(ui_cx_t *cx, ui_element_t *root);

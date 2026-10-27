@@ -33,5 +33,5 @@ struct ui_slotmap_s {
 
 ui_slotmap_t *ui_slotmap_create(arena_t *arena, u32 capacity, usize element_size);
 ui_handle_t ui_slotmap_insert(ui_slotmap_t *sm, const void *data);
-void *ui_slotmap_get(ui_slotmap_t *sm, ui_handle_t hangle);
+void *ui_slotmap_get(ui_slotmap_t *sm, ui_handle_t handle);
 void ui_slotmap_erase(ui_slotmap_t *sm, ui_handle_t handle);

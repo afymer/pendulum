@@ -25,13 +25,56 @@
 #define TARGET_SWITCH_S 6.0f
 #define MAX_FRAME_NS (250 * NS_PER_MS)
 
-typedef struct counter_state_s {
-    i32 count;
-} counter_state_t;
+typedef struct sim_component_s {
+    pendulum_t *pendulum;
+    f32 target_x;
+    f32 pixels_per_meter;
+} sim_component_t;
 
-static void counter_render(void *self, ui_cx_t *cx)
+static void sim_custom_draw(ui_element_t *el, ui_cx_t *cx)
 {
-    (void)self;
+    sim_component_t *sim = el->user_data;
+    if (NULL == sim || NULL == sim->pendulum) {
+        return;
+    }
+    framebuffer_t fb = cx->fb;
+    pendulum_t *pendulum = sim->pendulum;
+    f32 ppm = sim->pixels_per_meter > 0.0f ? sim->pixels_per_meter : 350.0f;
+
+    vec2f32 origin = v2f32((f32)fb.width * 0.5f, (f32)fb.height * 0.5f);
+
+    vec2f32 root = v2f32(origin.x + pendulum->state.x * ppm, origin.y);
+    vec2f32 rel = pendulum_position(pendulum);
+    vec2f32 bob = v2f32(origin.x + rel.x * ppm, origin.y - rel.y * ppm);
+    vec2f32 target = v2f32(origin.x + sim->target_x * ppm, origin.y);
+
+    draw_line(fb, 0.0f, origin.y, (f32)fb.width, origin.y, 2.0f, 0xFF555555);
+    fill_rect(fb, (i32)target.x - 2, (i32)origin.y - 20, 4, 40, 0xFF66AA66);
+    fill_rect(fb, (i32)root.x - 50, (i32)root.y - 15, 100, 30, 0xFF999999);
+    draw_line(fb, root.x, root.y, bob.x, bob.y, 3.0f, 0xFFCCCCCC);
+    fill_circle(fb, bob.x, bob.y, 8.0f, 0xFF8888FF);
+}
+
+static void sim_render(void *self, ui_cx_t *cx)
+{
+    sim_component_t *sim = self;
+    ui_element_t *el = ui_append_child(cx, (layout_style_t){ .grow = 1.0f }, 0xFF212121);
+    el->custom_draw = sim_custom_draw;
+    el->user_data = sim;
+}
+
+static const ui_view_vtable_t sim_view_vtable = {
+    .render = sim_render,
+    .destroy = NULL,
+};
+
+typedef struct app_state_s {
+    ui_handle_t sim_view;
+} app_state_t;
+
+static void app_render(void *self, ui_cx_t *cx)
+{
+    app_state_t *state = self;
     ui_push_container(cx,
                       (layout_style_t){
                           .axis = LAYOUT_AXIS_HORIZONTAL,
@@ -40,14 +83,17 @@ static void counter_render(void *self, ui_cx_t *cx)
                       },
                       0xFF18181B);
 
-    ui_append_child(cx, (layout_style_t){ .width = 220.0f }, 0x212121);
-    ui_append_child(cx, (layout_style_t){ .grow = 1.0f }, 0x424242);
-    ui_append_child(cx, (layout_style_t){ .width = 260.0f }, 0x212121);
+    ui_append_child(cx, (layout_style_t){ .width = 220.0f }, 0xFF212121);
+    ui_append_view(cx, state->sim_view, (layout_style_t){ .grow = 1.0f });
+    ui_append_child(cx, (layout_style_t){ .width = 260.0f }, 0xFF212121);
 
     ui_pop(cx);
 }
 
-static const ui_view_vtable_t counter_view_vtable = { .render = counter_render, .destroy = NULL };
+static const ui_view_vtable_t app_view_vtable = {
+    .render = app_render,
+    .destroy = NULL,
+};
 
 int main(void)
 {
@@ -102,15 +148,24 @@ int main(void)
 
     ui_app_t *app = ui_app_create();
 
-    counter_state_t counter_state = { .count = 0 };
-    ui_view_t counter_view = { .entity = &counter_state, .vtable = &counter_view_vtable };
-    ui_handle_t counter_handle = ui_slotmap_insert(app->views, &counter_view);
+    sim_component_t sim_comp = {
+        .pendulum = &pendulum,
+        .target_x = 0.0f,
+        .pixels_per_meter = 350.0f,
+    };
+    ui_handle_t sim_handle = ui_view_create(app, &sim_comp, &sim_view_vtable);
+
+    app_state_t app_state = {
+        .sim_view = sim_handle,
+    };
+    ui_handle_t app_handle = ui_view_create(app, &app_state, &app_view_vtable);
 
     window_t *window = window_create(
-        app, (window_params_t){ .width = 800, .height = 600, .title = "Counter App" });
-    window->root_view = counter_handle;
+        app, (window_params_t){ .width = 1280, .height = 720, .title = "Pendulum Simulation" });
+    window->root_view = app_handle;
 
-    ui_notify(app, counter_handle);
+    window_set_animating(window, true);
+    ui_notify(app, app_handle);
 
     while (window_is_open(window)) {
         ui_event_t event = wait_for_event();
@@ -135,7 +190,8 @@ int main(void)
                 sim_time += SIM_DT;
                 acc_ns -= SIM_DT_NS;
             }
-            window->is_dirty = true;
+            sim_comp.target_x = target_x;
+            ui_notify(app, sim_handle);
         } else {
             last_ns = time_now_ns();
             acc_ns = 0;
@@ -145,5 +201,6 @@ int main(void)
     }
 
     ui_app_destroy(app);
+    arena_free(arena);
     return 0;
 }

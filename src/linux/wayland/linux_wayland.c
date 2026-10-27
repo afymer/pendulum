@@ -170,6 +170,11 @@ static void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, i3
         if (window->base.width != width || window->base.height != height) {
             window->base.width = width;
             window->base.height = height;
+            for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
+                window->buffers[i].needs_full_redraw = true;
+            }
+            window->base.needs_full_redraw = true;
+            window->base.full_redraw_buffers = LINUX_WAYLAND_BUFFER_COUNT;
             linux_wayland_event_push(window, &(ui_event_t){
                                                  .kind = UI_EVENT_WINDOW_RESIZE,
                                                  .resize = {
@@ -243,7 +248,8 @@ static void buffer_destroy(linux_wayland_buffer_t *slot)
 static bool buffer_init_pool(linux_wayland_window_t *window, linux_wayland_buffer_t *slot,
                              usize capacity)
 {
-    int fd = memfd_create(window->base.title, MFD_CLOEXEC);
+    const char *name = window->base.title ? window->base.title : "wayland-shm";
+    int fd = memfd_create(name, MFD_CLOEXEC);
     if (-1 == fd) {
         return false;
     }
@@ -269,6 +275,7 @@ static bool buffer_init_pool(linux_wayland_window_t *window, linux_wayland_buffe
     slot->pool = pool;
     slot->pixels = pixels;
     slot->capacity = capacity;
+    slot->needs_full_redraw = true;
     return true;
 }
 
@@ -318,6 +325,12 @@ static linux_wayland_buffer_t *buffer_acquire(linux_wayland_window_t *window)
             .height = height,
             .stride = stride,
         };
+        slot->needs_full_redraw = true;
+    }
+
+    if (slot->needs_full_redraw) {
+        window->base.needs_full_redraw = true;
+        slot->needs_full_redraw = false;
     }
 
     return slot;
@@ -388,6 +401,8 @@ window_t *window_create(ui_app_t *app, window_params_t params)
             .should_close = false,
             .is_dirty = true,
             .is_animating = false,
+            .needs_full_redraw = true,
+            .full_redraw_buffers = LINUX_WAYLAND_BUFFER_COUNT,
         },
         .arena = arena,
         .max_monitor_width = 3840,
@@ -508,12 +523,29 @@ bool poll_event(ui_event_t *out)
 framebuffer_t window_framebuffer(window_t *base)
 {
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
-    window->current = buffer_acquire(window);
+    if (NULL == window->current) {
+        window->current = buffer_acquire(window);
+    }
     if (NULL == window->current) {
         return (framebuffer_t){};
     }
     base->is_dirty = false;
     return window->current->framebuffer;
+}
+
+void window_damage(window_t *base, i32 x, i32 y, i32 w, i32 h)
+{
+    linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
+    if (window->surface && w > 0 && h > 0) {
+        i32 x0 = MAX(0, x);
+        i32 y0 = MAX(0, y);
+        i32 x1 = MIN(base->width, x + w);
+        i32 y1 = MIN(base->height, y + h);
+        if (x1 > x0 && y1 > y0) {
+            wl_surface_damage_buffer(window->surface, x0, y0, x1 - x0, y1 - y0);
+            window->has_damage = true;
+        }
+    }
 }
 
 void window_present(window_t *base)
@@ -529,8 +561,11 @@ void window_present(window_t *base)
         wl_callback_add_listener(window->frame_callback, &frame_listener, window);
     }
     wl_surface_attach(window->surface, slot->buffer, 0, 0);
-    wl_surface_damage_buffer(window->surface, 0, 0, slot->framebuffer.width,
-                             slot->framebuffer.height);
+    if (!window->has_damage) {
+        wl_surface_damage_buffer(window->surface, 0, 0, slot->framebuffer.width,
+                                 slot->framebuffer.height);
+    }
+    window->has_damage = false;
     wl_surface_commit(window->surface);
     wl_display_flush(window->display);
 

@@ -13,6 +13,8 @@ struct window_s {
     bool should_close;
     bool is_dirty;
     bool is_animating;
+    bool needs_full_redraw;
+    u32 full_redraw_buffers;
 
     ui_handle_t root_view;
 

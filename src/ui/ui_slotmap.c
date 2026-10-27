@@ -24,7 +24,7 @@ ui_slotmap_t *ui_slotmap_create(arena_t *arena, u32 capacity, usize element_size
 
 ui_handle_t ui_slotmap_insert(ui_slotmap_t *sm, const void *data)
 {
-    if (sm->len == sm->capacity) {
+    if (NULL == sm || sm->len == sm->capacity) {
         return UI_HANDLE_INVALID;
     }
     u32 index = sm->free_head;
@@ -38,18 +38,18 @@ ui_handle_t ui_slotmap_insert(ui_slotmap_t *sm, const void *data)
     return (ui_handle_t){ .index = index, .gen = gen };
 }
 
-void *ui_slotmap_get(ui_slotmap_t *sm, ui_handle_t hangle)
+void *ui_slotmap_get(ui_slotmap_t *sm, ui_handle_t handle)
 {
-    if (hangle.index >= sm->capacity || !sm->occupied[hangle.index] ||
-        sm->generations[hangle.index] != hangle.gen) {
+    if (NULL == sm || !ui_handle_is_valid(handle) || handle.index >= sm->capacity ||
+        !sm->occupied[handle.index] || sm->generations[handle.index] != handle.gen) {
         return NULL;
     }
-    return sm->data + hangle.index * sm->element_size;
+    return sm->data + handle.index * sm->element_size;
 }
 
 void ui_slotmap_erase(ui_slotmap_t *sm, ui_handle_t handle)
 {
-    if (handle.index >= sm->capacity) {
+    if (NULL == sm || !ui_handle_is_valid(handle) || handle.index >= sm->capacity) {
         return;
     }
     if (!sm->occupied[handle.index] || sm->generations[handle.index] != handle.gen) {
@@ -57,6 +57,9 @@ void ui_slotmap_erase(ui_slotmap_t *sm, ui_handle_t handle)
     }
     sm->occupied[handle.index] = 0;
     sm->generations[handle.index]++;
+    if (0 == sm->generations[handle.index]) {
+        sm->generations[handle.index] = 1;
+    }
     sm->free_list[handle.index] = sm->free_head;
     sm->free_head = handle.index;
     sm->len--;
