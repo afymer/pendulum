@@ -20,6 +20,7 @@ void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event)
     case UI_EVENT_WINDOW_RESIZE: {
         window->width = event->resize.width;
         window->height = event->resize.height;
+        window->is_dirty = true;
     } break;
     case UI_EVENT_WINDOW_REDRAW: {
         window->is_dirty = true;

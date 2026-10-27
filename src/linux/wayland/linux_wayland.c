@@ -18,6 +18,24 @@ static linux_wayland_window_t *g_active_wayland_window = NULL;
 static void linux_wayland_event_push(linux_wayland_window_t *window, const ui_event_t *ev)
 {
     linux_wayland_event_queue_t *q = &window->event_queue;
+
+    if (ev->kind == UI_EVENT_WINDOW_RESIZE) {
+        for (u32 i = 0; i < q->count; i++) {
+            u32 idx = (q->head + i) % LINUX_WAYLAND_EVENT_QUEUE_CAPACITY;
+            if (q->events[idx].kind == UI_EVENT_WINDOW_RESIZE) {
+                q->events[idx].resize = ev->resize;
+                return;
+            }
+        }
+    } else if (ev->kind == UI_EVENT_WINDOW_REDRAW) {
+        for (u32 i = 0; i < q->count; i++) {
+            u32 idx = (q->head + i) % LINUX_WAYLAND_EVENT_QUEUE_CAPACITY;
+            if (q->events[idx].kind == UI_EVENT_WINDOW_REDRAW) {
+                return;
+            }
+        }
+    }
+
     if (q->count < LINUX_WAYLAND_EVENT_QUEUE_CAPACITY) {
         q->events[q->tail] = *ev;
         q->tail = (q->tail + 1) % LINUX_WAYLAND_EVENT_QUEUE_CAPACITY;
@@ -37,6 +55,54 @@ static bool linux_wayland_event_pop(linux_wayland_window_t *window, ui_event_t *
     return true;
 }
 
+static void output_geometry(void *data, struct wl_output *output, int32_t x, int32_t y,
+                            int32_t physical_width, int32_t physical_height, int32_t subpixel,
+                            const char *make, const char *model, int32_t transform)
+{
+    (void)data;
+    (void)output;
+    (void)x;
+    (void)y;
+    (void)physical_width;
+    (void)physical_height;
+    (void)subpixel;
+    (void)make;
+    (void)model;
+    (void)transform;
+}
+
+static void output_mode(void *data, struct wl_output *output, uint32_t flags, int32_t width,
+                        int32_t height, int32_t refresh)
+{
+    (void)output;
+    (void)refresh;
+    linux_wayland_window_t *window = data;
+    if (flags & WL_OUTPUT_MODE_CURRENT) {
+        window->max_monitor_width = MAX(window->max_monitor_width, width);
+        window->max_monitor_height = MAX(window->max_monitor_height, height);
+    }
+}
+
+static void output_done(void *data, struct wl_output *output)
+{
+    (void)data;
+    (void)output;
+}
+
+static void output_scale(void *data, struct wl_output *output, int32_t factor)
+{
+    (void)data;
+    (void)output;
+    (void)factor;
+}
+
+static const struct wl_output_listener output_listener = {
+    .geometry = output_geometry,
+    .mode = output_mode,
+    .done = output_done,
+    .scale = output_scale,
+};
+
 static void registry_global(void *data, struct wl_registry *registry, u32 name,
                             const char *interface, u32 version)
 {
@@ -50,6 +116,12 @@ static void registry_global(void *data, struct wl_registry *registry, u32 name,
     } else if (0 == strcmp(interface, xdg_wm_base_interface.name)) {
         window->wm_base =
             wl_registry_bind(registry, name, &xdg_wm_base_interface, XDG_WM_BASE_VERSION);
+    } else if (0 == strcmp(interface, wl_output_interface.name)) {
+        if (window->output_count < LINUX_WAYLAND_MAX_OUTPUTS) {
+            struct wl_output *output = wl_registry_bind(registry, name, &wl_output_interface, 2);
+            wl_output_add_listener(output, &output_listener, window);
+            window->outputs[window->output_count++] = output;
+        }
     }
 }
 
@@ -154,50 +226,47 @@ static const struct wl_buffer_listener buffer_listener = {
 
 static void buffer_destroy(linux_wayland_buffer_t *slot)
 {
-    if (slot->buffer)
+    if (slot->buffer) {
         wl_buffer_destroy(slot->buffer);
-    if (slot->framebuffer.pixels)
-        munmap(slot->framebuffer.pixels, slot->size);
+    }
+    if (slot->pool) {
+        wl_shm_pool_destroy(slot->pool);
+    }
+    if (slot->pixels) {
+        munmap(slot->pixels, slot->capacity);
+    }
     *slot = (linux_wayland_buffer_t){};
 }
 
-static bool buffer_create(linux_wayland_window_t *window, linux_wayland_buffer_t *slot)
+static bool buffer_init_pool(linux_wayland_window_t *window, linux_wayland_buffer_t *slot,
+                             usize capacity)
 {
-    i32 width = window->base.width;
-    i32 height = window->base.height;
-    i32 stride = width * BYTES_PER_PIXEL;
-    usize size = (usize)stride * (usize)height;
-
     int fd = memfd_create(window->base.title, MFD_CLOEXEC);
     if (-1 == fd) {
         return false;
     }
-    if (-1 == ftruncate(fd, (off_t)size)) {
+    if (-1 == ftruncate(fd, (off_t)capacity)) {
         close(fd);
         return false;
     }
 
-    u32 *pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    u32 *pixels = mmap(NULL, capacity, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (MAP_FAILED == pixels) {
         close(fd);
         return false;
     }
 
-    struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, (i32)size);
-    slot->buffer =
-        wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
-    wl_shm_pool_destroy(pool);
+    struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, (i32)capacity);
     close(fd);
 
-    wl_buffer_add_listener(slot->buffer, &buffer_listener, slot);
-    slot->framebuffer = (framebuffer_t){
-        .pixels = pixels,
-        .width = width,
-        .height = height,
-        .stride = stride,
-    };
-    slot->size = size;
-    slot->busy = false;
+    if (NULL == pool) {
+        munmap(pixels, capacity);
+        return false;
+    }
+
+    slot->pool = pool;
+    slot->pixels = pixels;
+    slot->capacity = capacity;
     return true;
 }
 
@@ -218,17 +287,37 @@ static linux_wayland_buffer_t *buffer_acquire(linux_wayland_window_t *window)
         }
     }
 
-    // Dispatching above may have changed the window size, so compare only now
-    if (slot->framebuffer.width != window->base.width ||
-        slot->framebuffer.height != window->base.height) {
+    i32 width = window->base.width;
+    i32 height = window->base.height;
+    i32 stride = width * BYTES_PER_PIXEL;
+    usize required_size = (usize)stride * (usize)height;
+
+    if (required_size > slot->capacity) {
         buffer_destroy(slot);
-        if (!buffer_create(window, slot)) {
-            LOG_ERROR("cannot create the shm buffer");
+        if (!buffer_init_pool(window, slot, required_size)) {
+            LOG_ERROR("cannot resize shm pool");
             window->base.is_open = false;
             window->base.should_close = true;
             return NULL;
         }
     }
+
+    if (slot->framebuffer.width != width || slot->framebuffer.height != height ||
+        NULL == slot->buffer) {
+        if (slot->buffer) {
+            wl_buffer_destroy(slot->buffer);
+        }
+        slot->buffer = wl_shm_pool_create_buffer(slot->pool, 0, width, height, stride,
+                                                 WL_SHM_FORMAT_XRGB8888);
+        wl_buffer_add_listener(slot->buffer, &buffer_listener, slot);
+        slot->framebuffer = (framebuffer_t){
+            .pixels = slot->pixels,
+            .width = width,
+            .height = height,
+            .stride = stride,
+        };
+    }
+
     return slot;
 }
 
@@ -252,6 +341,11 @@ void window_destroy(window_t *base)
         wl_callback_destroy(window->frame_callback);
     for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
         buffer_destroy(&window->buffers[i]);
+    }
+    for (u32 i = 0; i < window->output_count; i++) {
+        if (window->outputs[i]) {
+            wl_output_destroy(window->outputs[i]);
+        }
     }
     if (window->shm)
         wl_shm_destroy(window->shm);
@@ -293,6 +387,8 @@ window_t *window_create(ui_app_t *app, window_params_t params)
             .is_dirty = true,
         },
         .arena = arena,
+        .max_monitor_width = 3840,
+        .max_monitor_height = 2160,
     };
 
     window->display = wl_display_connect(NULL);
@@ -305,12 +401,22 @@ window_t *window_create(ui_app_t *app, window_params_t params)
     wl_registry_add_listener(window->registry, &registry_listener, window);
 
     wl_display_roundtrip(window->display);
+    wl_display_roundtrip(window->display);
 
     if (NULL == window->compositor || NULL == window->shm || NULL == window->wm_base) {
         LOG_ERROR("compositor lacks wl_compositor, wl_shm or xdg_wm_base");
         goto fail;
     }
     xdg_wm_base_add_listener(window->wm_base, &wm_base_listener, window);
+
+    usize pool_capacity =
+        (usize)window->max_monitor_width * (usize)window->max_monitor_height * BYTES_PER_PIXEL;
+    for (usize i = 0; i < LINUX_WAYLAND_BUFFER_COUNT; i++) {
+        if (!buffer_init_pool(window, &window->buffers[i], pool_capacity)) {
+            LOG_ERROR("cannot allocate shm buffer pool");
+            goto fail;
+        }
+    }
 
     window->surface = wl_compositor_create_surface(window->compositor);
     window->xdg_surface = xdg_wm_base_get_xdg_surface(window->wm_base, window->surface);
@@ -364,6 +470,38 @@ ui_event_t wait_for_event(void)
     return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
 }
 
+bool poll_event(ui_event_t *out)
+{
+    linux_wayland_window_t *window = g_active_wayland_window;
+    if (NULL == window || NULL == window->display) {
+        return false;
+    }
+
+    if (linux_wayland_event_pop(window, out)) {
+        return true;
+    }
+
+    struct wl_display *display = window->display;
+    while (0 != wl_display_prepare_read(display)) {
+        wl_display_dispatch_pending(display);
+    }
+    wl_display_flush(display);
+
+    struct pollfd pfd = { .fd = wl_display_get_fd(display), .events = POLLIN };
+    if (poll(&pfd, 1, 0) > 0) {
+        wl_display_read_events(display);
+    } else {
+        wl_display_cancel_read(display);
+    }
+
+    if (-1 == wl_display_dispatch_pending(display)) {
+        window->base.should_close = true;
+        window->base.is_open = false;
+    }
+
+    return linux_wayland_event_pop(window, out);
+}
+
 framebuffer_t window_framebuffer(window_t *base)
 {
     linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
@@ -395,36 +533,4 @@ void window_present(window_t *base)
 
     slot->busy = true;
     window->current = NULL;
-}
-
-void window_poll_events(window_t *base)
-{
-    linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
-    struct wl_display *display = window->display;
-
-    while (0 != wl_display_prepare_read(display)) {
-        wl_display_dispatch_pending(display);
-    }
-    wl_display_flush(display);
-
-    struct pollfd pfd = { .fd = wl_display_get_fd(display), .events = POLLIN };
-    if (poll(&pfd, 1, 0) > 0) {
-        wl_display_read_events(display);
-    } else {
-        wl_display_cancel_read(display);
-    }
-
-    if (-1 == wl_display_dispatch_pending(display)) {
-        base->should_close = true;
-        base->is_open = false;
-    }
-}
-
-void window_wait_events(window_t *base)
-{
-    linux_wayland_window_t *window = CONTAINER_OF(base, linux_wayland_window_t, base);
-    if (-1 == wl_display_dispatch(window->display)) {
-        base->should_close = true;
-        base->is_open = false;
-    }
 }

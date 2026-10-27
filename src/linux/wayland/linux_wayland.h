@@ -4,6 +4,7 @@
 
 #define LINUX_WAYLAND_BUFFER_COUNT 2
 #define LINUX_WAYLAND_EVENT_QUEUE_CAPACITY 64
+#define LINUX_WAYLAND_MAX_OUTPUTS 8
 
 typedef struct linux_wayland_event_queue_s linux_wayland_event_queue_t;
 struct linux_wayland_event_queue_s {
@@ -15,9 +16,11 @@ struct linux_wayland_event_queue_s {
 
 typedef struct linux_wayland_buffer_s linux_wayland_buffer_t;
 struct linux_wayland_buffer_s {
+    struct wl_shm_pool *pool;
     struct wl_buffer *buffer;
+    u32 *pixels;
     framebuffer_t framebuffer;
-    usize size;
+    usize capacity;
     bool busy;
 };
 
@@ -30,6 +33,10 @@ struct linux_wayland_window_s {
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct xdg_wm_base *wm_base;
+    struct wl_output *outputs[LINUX_WAYLAND_MAX_OUTPUTS];
+    u32 output_count;
+    i32 max_monitor_width;
+    i32 max_monitor_height;
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;

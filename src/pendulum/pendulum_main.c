@@ -115,6 +115,9 @@ int main(void)
     while (window_is_open(window)) {
         ui_event_t event = wait_for_event();
         dispatch_event(app, window, &event);
+        while (poll_event(&event)) {
+            dispatch_event(app, window, &event);
+        }
 
         u64 now_ns = time_now_ns();
         acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
