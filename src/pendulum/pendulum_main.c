@@ -119,19 +119,26 @@ int main(void)
             dispatch_event(app, window, &event);
         }
 
-        u64 now_ns = time_now_ns();
-        acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
-        last_ns = now_ns;
-        while (acc_ns >= SIM_DT_NS) {
-            target_x = fmodf(sim_time, 2.0f * TARGET_SWITCH_S) < TARGET_SWITCH_S ? 1.0f : -1.0f;
-            if (sim_ticks % CONTROL_DIVIDER == 0) {
-                force = controller_update(controller, pendulum_measure(&pendulum), target_x,
-                                          CONTROL_DT);
+        if (window->is_animating) {
+            u64 now_ns = time_now_ns();
+            acc_ns += MIN(now_ns - last_ns, MAX_FRAME_NS);
+            last_ns = now_ns;
+            while (acc_ns >= SIM_DT_NS) {
+                target_x =
+                    fmodf(sim_time, 2.0f * TARGET_SWITCH_S) < TARGET_SWITCH_S ? 1.0f : -1.0f;
+                if (sim_ticks % CONTROL_DIVIDER == 0) {
+                    force = controller_update(controller, pendulum_measure(&pendulum), target_x,
+                                              CONTROL_DT);
+                }
+                pendulum_step(&pendulum, force, SIM_DT);
+                sim_ticks++;
+                sim_time += SIM_DT;
+                acc_ns -= SIM_DT_NS;
             }
-            pendulum_step(&pendulum, force, SIM_DT);
-            sim_ticks++;
-            sim_time += SIM_DT;
-            acc_ns -= SIM_DT_NS;
+            window->is_dirty = true;
+        } else {
+            last_ns = time_now_ns();
+            acc_ns = 0;
         }
 
         ui_window_render(app, window);

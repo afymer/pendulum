@@ -12,6 +12,7 @@ struct window_s {
     bool is_open;
     bool should_close;
     bool is_dirty;
+    bool is_animating;
 
     ui_handle_t root_view;
 

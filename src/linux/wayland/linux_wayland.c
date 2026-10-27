@@ -203,10 +203,12 @@ static void frame_done(void *data, struct wl_callback *callback, u32 time)
     linux_wayland_window_t *window = data;
     wl_callback_destroy(callback);
     window->frame_callback = NULL;
-    window->base.is_dirty = true;
-    linux_wayland_event_push(window, &(ui_event_t){
-                                         .kind = UI_EVENT_WINDOW_REDRAW,
-                                     });
+    if (window->base.is_animating) {
+        window->base.is_dirty = true;
+        linux_wayland_event_push(window, &(ui_event_t){
+                                             .kind = UI_EVENT_WINDOW_REDRAW,
+                                         });
+    }
 }
 
 static const struct wl_callback_listener frame_listener = {
@@ -385,6 +387,7 @@ window_t *window_create(ui_app_t *app, window_params_t params)
             .is_open = true,
             .should_close = false,
             .is_dirty = true,
+            .is_animating = false,
         },
         .arena = arena,
         .max_monitor_width = 3840,
@@ -521,7 +524,7 @@ void window_present(window_t *base)
         return;
     }
 
-    if (NULL == window->frame_callback) {
+    if (base->is_animating && NULL == window->frame_callback) {
         window->frame_callback = wl_surface_frame(window->surface);
         wl_callback_add_listener(window->frame_callback, &frame_listener, window);
     }

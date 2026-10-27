@@ -18,6 +18,7 @@ struct window_params_s {
 window_t *window_create(ui_app_t *app, window_params_t params);
 void window_destroy(window_t *window);
 bool window_is_open(const window_t *window);
+void window_set_animating(window_t *window, bool animating);
 ui_event_t wait_for_event(void);
 bool poll_event(ui_event_t *event);
 void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event);

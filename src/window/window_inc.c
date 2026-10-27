@@ -5,6 +5,16 @@ bool window_is_open(const window_t *window)
     return NULL != window && window->is_open;
 }
 
+void window_set_animating(window_t *window, bool animating)
+{
+    if (window && window->is_animating != animating) {
+        window->is_animating = animating;
+        if (animating) {
+            window->is_dirty = true;
+        }
+    }
+}
+
 void dispatch_event(ui_app_t *app, window_t *window, const ui_event_t *event)
 {
     (void)app;
