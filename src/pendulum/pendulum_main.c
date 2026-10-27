@@ -31,13 +31,12 @@ typedef struct sim_component_s {
     f32 pixels_per_meter;
 } sim_component_t;
 
-static void sim_custom_draw(ui_element_t *el, ui_cx_t *cx)
+static void sim_canvas_draw(framebuffer_t fb, void *user_data)
 {
-    sim_component_t *sim = el->user_data;
+    sim_component_t *sim = user_data;
     if (NULL == sim || NULL == sim->pendulum) {
         return;
     }
-    framebuffer_t fb = cx->fb;
     pendulum_t *pendulum = sim->pendulum;
     f32 ppm = sim->pixels_per_meter > 0.0f ? sim->pixels_per_meter : 350.0f;
 
@@ -58,9 +57,12 @@ static void sim_custom_draw(ui_element_t *el, ui_cx_t *cx)
 static void sim_render(void *self, ui_cx_t *cx)
 {
     sim_component_t *sim = self;
-    ui_element_t *el = ui_append_child(cx, (layout_style_t){ .grow = 1.0f }, 0xFF212121);
-    el->custom_draw = sim_custom_draw;
-    el->user_data = sim;
+    ui_canvas(cx, (ui_canvas_params_t){
+                      .style = { .grow = 1.0f },
+                      .background = 0xFF212121,
+                      .draw = sim_canvas_draw,
+                      .user_data = sim,
+                  });
 }
 
 static const ui_view_vtable_t sim_view_vtable = {
@@ -75,19 +77,20 @@ typedef struct app_state_s {
 static void app_render(void *self, ui_cx_t *cx)
 {
     app_state_t *state = self;
-    ui_push_container(cx,
-                      (layout_style_t){
-                          .axis = LAYOUT_AXIS_HORIZONTAL,
-                          .gap = 8.0f,
-                          .padding = 8.0f,
-                      },
-                      0xFF18181B);
+    ui_div_begin(cx, (ui_div_params_t){
+                         .style = {
+                             .axis = LAYOUT_AXIS_HORIZONTAL,
+                             .gap = 8.0f,
+                             .padding = 8.0f,
+                         },
+                         .background = 0xFF18181B,
+                     });
 
-    ui_append_child(cx, (layout_style_t){ .width = 220.0f }, 0xFF212121);
-    ui_append_view(cx, state->sim_view, (layout_style_t){ .grow = 1.0f });
-    ui_append_child(cx, (layout_style_t){ .width = 260.0f }, 0xFF212121);
+    ui_div(cx, (ui_div_params_t){ .style = { .width = 220.0f }, .background = 0xFF212121 });
+    ui_view(cx, state->sim_view, (layout_style_t){ .grow = 1.0f });
+    ui_div(cx, (ui_div_params_t){ .style = { .width = 260.0f }, .background = 0xFF212121 });
 
-    ui_pop(cx);
+    ui_div_end(cx);
 }
 
 static const ui_view_vtable_t app_view_vtable = {

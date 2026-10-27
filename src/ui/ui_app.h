@@ -57,6 +57,18 @@ struct ui_view_s {
     bool is_dirty;
 };
 
+typedef struct ui_div_params_s {
+    layout_style_t style;
+    u32 background;
+} ui_div_params_t;
+
+typedef struct ui_canvas_params_s {
+    layout_style_t style;
+    u32 background;
+    ui_canvas_draw_fn draw;
+    void *user_data;
+} ui_canvas_params_t;
+
 ui_app_t *ui_app_create(void);
 void ui_app_destroy(ui_app_t *app);
 void ui_app_add_window(ui_app_t *app, window_t *window);
@@ -64,6 +76,12 @@ void ui_app_add_window(ui_app_t *app, window_t *window);
 ui_handle_t ui_view_create(ui_app_t *app, void *entity, const ui_view_vtable_t *vtable);
 void ui_view_destroy(ui_app_t *app, ui_handle_t handle);
 void ui_notify(ui_app_t *app, ui_handle_t handle);
+
+ui_element_t *ui_div_begin(ui_cx_t *cx, ui_div_params_t params);
+void ui_div_end(ui_cx_t *cx);
+ui_element_t *ui_div(ui_cx_t *cx, ui_div_params_t params);
+ui_element_t *ui_canvas(ui_cx_t *cx, ui_canvas_params_t params);
+ui_element_t *ui_view(ui_cx_t *cx, ui_handle_t view_handle, layout_style_t style);
 
 ui_element_t *ui_push_container(ui_cx_t *cx, layout_style_t style, u32 background);
 void ui_pop(ui_cx_t *cx);
