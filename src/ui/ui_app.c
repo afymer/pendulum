@@ -110,13 +110,63 @@ static void ui_layout_fit_sizes(ui_element_t *node)
         return;
     }
     f32 inset = 2.0f * node->style.padding;
-    node->computed_size.x = (vertical ? cross_max : main_total) + inset;
-    node->computed_size.y = (vertical ? main_total : cross_max) + inset;
+    f32 w = (vertical ? cross_max : main_total) + inset;
+    f32 h = (vertical ? main_total : cross_max) + inset;
+    if (node->style.width > 0.0f) {
+        w = node->style.width;
+    }
+    if (node->style.height > 0.0f) {
+        h = node->style.height;
+    }
+    node->computed_size = v2f32(w, h);
 }
 
 static void ui_layout_place(ui_element_t *node)
 {
     bool vertical = node->style.axis == LAYOUT_AXIS_VERTICAL;
+    f32 parent_main = vertical ? node->computed_size.y : node->computed_size.x;
+    f32 parent_cross = vertical ? node->computed_size.x : node->computed_size.y;
+    f32 inner_main = MAX(0.0f, parent_main - 2.0f * node->style.padding);
+    f32 inner_cross = MAX(0.0f, parent_cross - 2.0f * node->style.padding);
+
+    f32 fixed_main = 0.0f;
+    f32 total_grow = 0.0f;
+    u32 count = 0;
+
+    for (ui_element_t *c = node->first_child; c; c = c->next_sibling) {
+        if (c->style.grow > 0.0f) {
+            total_grow += c->style.grow;
+        } else {
+            fixed_main += vertical ? c->computed_size.y : c->computed_size.x;
+        }
+        count++;
+    }
+    if (count > 1) {
+        fixed_main += node->style.gap * (f32)(count - 1);
+    }
+
+    f32 remaining_main = MAX(0.0f, inner_main - fixed_main);
+
+    for (ui_element_t *c = node->first_child; c; c = c->next_sibling) {
+        if (c->style.grow > 0.0f && total_grow > 0.0f) {
+            f32 flex_size = remaining_main * (c->style.grow / total_grow);
+            if (vertical) {
+                c->computed_size.y = flex_size;
+            } else {
+                c->computed_size.x = flex_size;
+            }
+        }
+        if (vertical) {
+            if (c->style.width <= 0.0f) {
+                c->computed_size.x = inner_cross;
+            }
+        } else {
+            if (c->style.height <= 0.0f) {
+                c->computed_size.y = inner_cross;
+            }
+        }
+    }
+
     vec2f32 cursor = v2f32(node->computed_pos.x + node->style.padding,
                            node->computed_pos.y + node->style.padding);
 

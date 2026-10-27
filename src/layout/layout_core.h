@@ -14,6 +14,7 @@ struct layout_style_s {
     f32 height;
     f32 padding;
     f32 gap;
+    f32 grow;
 };
 
 typedef struct layout_node_s layout_node_t;

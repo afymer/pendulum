@@ -32,7 +32,19 @@ typedef struct counter_state_s {
 static void counter_render(void *self, ui_cx_t *cx)
 {
     (void)self;
-    (void)cx;
+    ui_push_container(cx,
+                      (layout_style_t){
+                          .axis = LAYOUT_AXIS_HORIZONTAL,
+                          .gap = 8.0f,
+                          .padding = 8.0f,
+                      },
+                      0xFF18181B);
+
+    ui_append_child(cx, (layout_style_t){ .width = 220.0f }, 0x212121);
+    ui_append_child(cx, (layout_style_t){ .grow = 1.0f }, 0x424242);
+    ui_append_child(cx, (layout_style_t){ .width = 260.0f }, 0x212121);
+
+    ui_pop(cx);
 }
 
 static const ui_view_vtable_t counter_view_vtable = { .render = counter_render, .destroy = NULL };
