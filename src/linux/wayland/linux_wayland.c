@@ -396,7 +396,6 @@ window_t *window_create(ui_app_t *app, window_params_t params)
             .width = params.width,
             .height = params.height,
             .scale_factor = 1.0f,
-            .root_view = UI_HANDLE_INVALID,
             .is_open = true,
             .should_close = false,
             .is_dirty = true,

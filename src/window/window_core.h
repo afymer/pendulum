@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/ui_slotmap.h"
+#include "base/base_inc.h"
 
 typedef struct window_s window_t;
 struct window_s {
@@ -15,8 +15,6 @@ struct window_s {
     bool is_animating;
     bool needs_full_redraw;
     u32 full_redraw_buffers;
-
-    ui_handle_t root_view;
 
     void *hit_tests;
     void *gpu_draw_list;

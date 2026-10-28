@@ -5,7 +5,6 @@
 
 #include "pendulum_sim.h"
 #include "pendulum_canvas_view.h"
-#include "pendulum_app_view.h"
 
 // units
 #include "base/base_inc.c"
@@ -19,7 +18,6 @@
 
 #include "pendulum_sim.c"
 #include "pendulum_canvas_view.c"
-#include "pendulum_app_view.c"
 
 int main(void)
 {
@@ -30,22 +28,29 @@ int main(void)
 
     ui_app_t *app = ui_app_create();
     ui_handle_t canvas_view = pendulum_canvas_view_create(app, &sim, 350.0f);
-    ui_handle_t app_view = pendulum_app_view_create(app, canvas_view);
 
     window_t *window = window_create(
         app, (window_params_t){ .width = 1280, .height = 720, .title = "Pendulum Simulation" });
-    window->root_view = app_view;
 
     window_set_animating(window, true);
-    ui_notify(app, app_view);
+
+    bool show_menu = true;
 
     u64 last_ns = time_now_ns();
     u64 acc_ns = 0;
 
     while (window_is_open(window)) {
         ui_event_t event = wait_for_event();
+        if (event.kind == UI_EVENT_KEY && event.key.is_down) {
+            show_menu = !show_menu;
+            ui_window_invalidate(window);
+        }
         dispatch_event(app, window, &event);
         while (poll_event(&event)) {
+            if (event.kind == UI_EVENT_KEY && event.key.is_down) {
+                show_menu = !show_menu;
+                ui_window_invalidate(window);
+            }
             dispatch_event(app, window, &event);
         }
 
@@ -63,7 +68,59 @@ int main(void)
             acc_ns = 0;
         }
 
-        ui_window_render(app, window);
+        ui_cx_t *cx = ui_begin_window(app, window);
+        if (cx) {
+            ui_div_begin(cx, (ui_div_params_t){
+                                 .style = {
+                                     .axis = LAYOUT_AXIS_VERTICAL,
+                                     .grow = 1.0f,
+                                 },
+                                 .background = 0xFF18181B,
+                             });
+            {
+                if (show_menu) {
+                    ui_div_begin(cx, (ui_div_params_t){
+                                         .style = {
+                                             .height = 36.0f,
+                                             .axis = LAYOUT_AXIS_HORIZONTAL,
+                                             .gap = 8.0f,
+                                             .padding = 6.0f,
+                                         },
+                                         .background = 0xFF27272A,
+                                     });
+                    {
+                        ui_div(cx, (ui_div_params_t){ .style = { .width = 64.0f },
+                                                      .background = 0xFF3F3F46 });
+                        ui_div(cx, (ui_div_params_t){ .style = { .width = 64.0f },
+                                                      .background = 0xFF3F3F46 });
+                        ui_div(cx, (ui_div_params_t){ .style = { .width = 64.0f },
+                                                      .background = 0xFF3F3F46 });
+                    }
+                    ui_div_end(cx);
+                }
+
+                ui_div_begin(cx, (ui_div_params_t){
+                                     .style = {
+                                         .axis = LAYOUT_AXIS_HORIZONTAL,
+                                         .gap = 8.0f,
+                                         .padding = 8.0f,
+                                         .grow = 1.0f,
+                                     },
+                                     .background = 0xFF18181B,
+                                 });
+                {
+                    ui_div(cx, (ui_div_params_t){ .style = { .width = 220.0f },
+                                                  .background = 0xFF212121 });
+                    ui_view(cx, canvas_view, (layout_style_t){ .grow = 1.0f });
+                    ui_div(cx, (ui_div_params_t){ .style = { .width = 260.0f },
+                                                  .background = 0xFF212121 });
+                }
+                ui_div_end(cx);
+            }
+            ui_div_end(cx);
+
+            ui_end_window(cx);
+        }
     }
 
     ui_app_destroy(app);

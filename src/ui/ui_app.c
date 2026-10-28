@@ -349,42 +349,6 @@ void ui_layout_solve(ui_element_t *root, f32 width, f32 height)
     ui_layout_place(root);
 }
 
-static void ui_view_update_dirty_views(ui_app_t *app, window_t *win, ui_handle_t root_handle,
-                                       bool *need_layout)
-{
-    for (u32 i = 0; i < app->views->capacity; i++) {
-        if (!app->views->occupied[i]) {
-            continue;
-        }
-        ui_handle_t handle = { .index = i, .gen = app->views->generations[i] };
-        if (ui_handle_eq(handle, root_handle)) {
-            continue;
-        }
-        ui_view_t *view = (ui_view_t *)(app->views->data + i * app->views->element_size);
-        if (view->is_dirty && view->container) {
-            ui_element_t *old_root = view->root_element;
-            vec2f32 old_size = old_root ? old_root->computed_size : v2f32(0.0f, 0.0f);
-
-            ui_view_render_into_container(app, win, view, view->container, handle);
-
-            if (view->root_element) {
-                view->root_element->computed_pos = view->container->computed_pos;
-                view->root_element->computed_size = view->container->computed_size;
-                if (view->root_element->kind == UI_NODE_DIV &&
-                    view->root_element->div.first_child) {
-                    ui_layout_solve(view->root_element, view->container->computed_size.x,
-                                    view->container->computed_size.y);
-                }
-            }
-
-            if (old_root && (old_size.x != view->container->computed_size.x ||
-                             old_size.y != view->container->computed_size.y)) {
-                *need_layout = true;
-            }
-        }
-    }
-}
-
 static inline framebuffer_t ui_sub_framebuffer(framebuffer_t fb, i32 x, i32 y, i32 w, i32 h)
 {
     i32 x0 = MAX(x, 0);
@@ -471,46 +435,46 @@ void ui_element_paint(ui_cx_t *cx, ui_element_t *root)
     }
 }
 
-void ui_window_render(ui_app_t *app, window_t *win)
+ui_cx_t *ui_begin_window(ui_app_t *app, window_t *win)
 {
-    if (!win->is_dirty) {
-        return;
+    if (NULL == app || NULL == win || !win->is_dirty) {
+        return NULL;
     }
 
-    ui_view_t *root_view = ui_slotmap_get(app->views, win->root_view);
-    if (NULL == root_view) {
-        return;
+    if (app->frame_arena) {
+        app->frame_arena->opl = ARENA_METADATA_SIZE;
     }
-
-    bool need_layout = (NULL == root_view->root_element);
-
-    if (root_view->is_dirty || NULL == root_view->root_element) {
-        root_view->arena->opl = ARENA_METADATA_SIZE;
-        root_view->root_element = NULL;
-        ui_cx_t cx = {
-            .app = app,
-            .window = win,
-            .arena = root_view->arena,
-            .current_view = win->root_view,
-        };
-        if (root_view->vtable && root_view->vtable->render) {
-            root_view->vtable->render(root_view->entity, &cx);
-        }
-        root_view->root_element = cx.root;
-        root_view->is_dirty = false;
-        need_layout = true;
-    } else {
-        ui_view_update_dirty_views(app, win, win->root_view, &need_layout);
-    }
-
-    if ((need_layout || win->needs_full_redraw) && root_view->root_element) {
-        ui_layout_solve(root_view->root_element, (f32)win->width, (f32)win->height);
-    }
-
-    ui_cx_t paint_cx = {
+    app->frame_cx = (ui_cx_t){
         .app = app,
         .window = win,
+        .arena = app->frame_arena,
+        .current_view = UI_HANDLE_INVALID,
+        .root = NULL,
+        .parent_depth = 0,
     };
-    ui_element_paint(&paint_cx, root_view->root_element);
+    return &app->frame_cx;
+}
+
+void ui_end_window(ui_cx_t *cx)
+{
+    if (NULL == cx || NULL == cx->window) {
+        return;
+    }
+    assert(cx->parent_depth == 0);
+    window_t *win = cx->window;
+
+    if (cx->root) {
+        ui_layout_solve(cx->root, (f32)win->width, (f32)win->height);
+        ui_element_paint(cx, cx->root);
+    }
     win->is_dirty = false;
+}
+
+void ui_window_invalidate(window_t *win)
+{
+    if (win) {
+        win->is_dirty = true;
+        win->needs_full_redraw = true;
+        win->full_redraw_buffers = LINUX_WAYLAND_BUFFER_COUNT;
+    }
 }

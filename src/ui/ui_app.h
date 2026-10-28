@@ -15,17 +15,6 @@
 #define UI_MAX_PARENT_DEPTH 64
 
 typedef struct ui_app_s ui_app_t;
-struct ui_app_s {
-    arena_t *arena;
-    arena_t *frame_arena;
-
-    ui_slotmap_t *entities;
-    ui_slotmap_t *views;
-    void *globals[32];
-
-    window_t *windows[UI_MAX_WINDOWS];
-    u32 window_count;
-};
 
 struct ui_cx_s {
     ui_app_t *app;
@@ -36,6 +25,20 @@ struct ui_cx_s {
     ui_element_t *parent_stack[UI_MAX_PARENT_DEPTH];
     u32 parent_depth;
     ui_handle_t current_view;
+};
+
+struct ui_app_s {
+    arena_t *arena;
+    arena_t *frame_arena;
+
+    ui_slotmap_t *entities;
+    ui_slotmap_t *views;
+    void *globals[32];
+
+    window_t *windows[UI_MAX_WINDOWS];
+    u32 window_count;
+
+    ui_cx_t frame_cx;
 };
 
 typedef void (*ui_view_render_fn)(void *self, ui_cx_t *cx);
@@ -77,6 +80,10 @@ ui_handle_t ui_view_create(ui_app_t *app, void *entity, const ui_view_vtable_t *
 void ui_view_destroy(ui_app_t *app, ui_handle_t handle);
 void ui_notify(ui_app_t *app, ui_handle_t handle);
 
+ui_cx_t *ui_begin_window(ui_app_t *app, window_t *win);
+void ui_end_window(ui_cx_t *cx);
+void ui_window_invalidate(window_t *win);
+
 ui_element_t *ui_div_begin(ui_cx_t *cx, ui_div_params_t params);
 void ui_div_end(ui_cx_t *cx);
 ui_element_t *ui_div(ui_cx_t *cx, ui_div_params_t params);
@@ -90,4 +97,3 @@ ui_element_t *ui_append_view(ui_cx_t *cx, ui_handle_t view_handle, layout_style_
 
 void ui_layout_solve(ui_element_t *root, f32 width, f32 height);
 void ui_element_paint(ui_cx_t *cx, ui_element_t *root);
-void ui_window_render(ui_app_t *app, window_t *win);
