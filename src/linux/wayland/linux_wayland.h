@@ -37,6 +37,9 @@ struct linux_wayland_window_s {
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct xdg_wm_base *wm_base;
+    struct wl_seat *seat;
+    struct wl_keyboard *keyboard;
+    u32 modifiers;
     struct wl_output *outputs[LINUX_WAYLAND_MAX_OUTPUTS];
     u32 output_count;
     i32 max_monitor_width;
