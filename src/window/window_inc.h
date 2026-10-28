@@ -3,7 +3,6 @@
 #include "base/base_inc.h"
 #include "draw/draw_core.h"
 #include "ui/ui_app.h"
-#include "ui/ui_slotmap.h"
 
 #include "window_core.h"
 #include "window_event.h"

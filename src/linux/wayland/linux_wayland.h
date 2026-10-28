@@ -1,6 +1,9 @@
 #pragma once
 
-#include "window/window_inc.h"
+#include "base/base_inc.h"
+#include "draw/draw_core.h"
+#include "window/window_core.h"
+#include "window/window_event.h"
 
 #define LINUX_WAYLAND_BUFFER_COUNT 2
 #define LINUX_WAYLAND_EVENT_QUEUE_CAPACITY 64
