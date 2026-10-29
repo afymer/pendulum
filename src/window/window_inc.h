@@ -28,4 +28,8 @@ void window_present(window_t *window);
 
 #if LINUX
 #include "linux/wayland/linux_wayland.h" // IWYU pragma: keep
+#define WINDOW_BUFFER_COUNT LINUX_WAYLAND_BUFFER_COUNT
+#elif WINDOWS
+#include "win32/window/win32_window.h" // IWYU pragma: keep
+#define WINDOW_BUFFER_COUNT 1
 #endif

@@ -1,4 +1,5 @@
 #include "math_mat.h"
+#include "base/base_memory.h"
 
 #define MAT_EXPM_TAYLOR_TERMS 20
 
@@ -9,14 +10,14 @@ matf32 create_matf32(arena_t *arena, u16 rows, u16 cols)
     mat.cols = cols;
     usize size = (usize)rows * cols * sizeof(f32);
     mat.data = arena_push(arena, size, alignof(f32));
-    memset(mat.data, 0, size);
+    set_mem(mat.data, 0, size);
     return mat;
 }
 
 matf32 copy_matf32(arena_t *arena, matf32 mat)
 {
     matf32 result = create_matf32(arena, mat.rows, mat.cols);
-    memcpy(result.data, mat.data, (usize)mat.rows * mat.cols * sizeof(f32));
+    copy_mem(result.data, mat.data, (usize)mat.rows * mat.cols * sizeof(f32));
     return result;
 }
 
@@ -37,7 +38,7 @@ matf32 id_matf32(arena_t *arena, u16 size)
 matf32 from_array_matf32(arena_t *arena, u16 rows, u16 cols, const f32 *values)
 {
     matf32 mat = create_matf32(arena, rows, cols);
-    memcpy(mat.data, values, (usize)rows * cols * sizeof(f32));
+    copy_mem(mat.data, values, (usize)rows * cols * sizeof(f32));
     return mat;
 }
 
@@ -94,7 +95,7 @@ void scale_matf32(matf32 mat, f32 scalar)
 
 void assign_matf32(matf32 dst, matf32 src)
 {
-    memcpy(dst.data, src.data, (usize)dst.rows * dst.cols * sizeof(f32));
+    copy_mem(dst.data, src.data, (usize)dst.rows * dst.cols * sizeof(f32));
 }
 
 void symmetrize_matf32(matf32 mat)
@@ -188,14 +189,14 @@ matf64 create_matf64(arena_t *arena, u16 rows, u16 cols)
     mat.cols = cols;
     usize size = (usize)rows * cols * sizeof(f64);
     mat.data = arena_push(arena, size, alignof(f64));
-    memset(mat.data, 0, size);
+    set_mem(mat.data, 0, size);
     return mat;
 }
 
 matf64 copy_matf64(arena_t *arena, matf64 mat)
 {
     matf64 result = create_matf64(arena, mat.rows, mat.cols);
-    memcpy(result.data, mat.data, (usize)mat.rows * mat.cols * sizeof(f64));
+    copy_mem(result.data, mat.data, (usize)mat.rows * mat.cols * sizeof(f64));
     return result;
 }
 
@@ -216,7 +217,7 @@ matf64 id_matf64(arena_t *arena, u16 size)
 matf64 from_array_matf64(arena_t *arena, u16 rows, u16 cols, const f64 *values)
 {
     matf64 mat = create_matf64(arena, rows, cols);
-    memcpy(mat.data, values, (usize)rows * cols * sizeof(f64));
+    copy_mem(mat.data, values, (usize)rows * cols * sizeof(f64));
     return mat;
 }
 
@@ -273,7 +274,7 @@ void scale_matf64(matf64 mat, f64 scalar)
 
 void assign_matf64(matf64 dst, matf64 src)
 {
-    memcpy(dst.data, src.data, (usize)dst.rows * dst.cols * sizeof(f64));
+    copy_mem(dst.data, src.data, (usize)dst.rows * dst.cols * sizeof(f64));
 }
 
 void symmetrize_matf64(matf64 mat)

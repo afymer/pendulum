@@ -70,7 +70,7 @@ ui_handle_t ui_view_create(ui_app_t *app, void *entity, const ui_view_vtable_t *
         .vtable = vtable,
         .arena = arena,
         .is_dirty = true,
-        .dirty_buffers = LINUX_WAYLAND_BUFFER_COUNT,
+        .dirty_buffers = WINDOW_BUFFER_COUNT,
     };
     return ui_slotmap_insert(app->views, &view);
 }
@@ -94,7 +94,7 @@ void ui_notify(ui_app_t *app, ui_handle_t handle)
     ui_view_t *view = ui_slotmap_get(app->views, handle);
     if (view) {
         view->is_dirty = true;
-        view->dirty_buffers = LINUX_WAYLAND_BUFFER_COUNT;
+        view->dirty_buffers = WINDOW_BUFFER_COUNT;
     }
     for (u32 i = 0; i < app->window_count; i++) {
         app->windows[i]->is_dirty = true;
@@ -475,6 +475,6 @@ void ui_window_invalidate(window_t *win)
     if (win) {
         win->is_dirty = true;
         win->needs_full_redraw = true;
-        win->full_redraw_buffers = LINUX_WAYLAND_BUFFER_COUNT;
+        win->full_redraw_buffers = WINDOW_BUFFER_COUNT;
     }
 }

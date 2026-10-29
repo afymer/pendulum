@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdbool.h>
+#include <stdalign.h>
 // IWYU pragma: end_exports
 
 // W: side effects

@@ -1,5 +1,6 @@
 #include "ui_slotmap.h"
 #include "base/base_arena.h"
+#include "base/base_memory.h"
 
 ui_slotmap_t *ui_slotmap_create(arena_t *arena, u32 capacity, usize element_size)
 {
@@ -33,7 +34,7 @@ ui_handle_t ui_slotmap_insert(ui_slotmap_t *sm, const void *data)
     u32 gen = sm->generations[index];
 
     sm->occupied[index] = 1;
-    memcpy(sm->data + index * sm->element_size, data, sm->element_size);
+    copy_mem(sm->data + index * sm->element_size, data, sm->element_size);
     sm->len++;
     return (ui_handle_t){ .index = index, .gen = gen };
 }
