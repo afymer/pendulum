@@ -1,6 +1,8 @@
 #pragma once
 
 #include "base/base_inc.h"
+
+#if LINUX
 #include "draw/draw_core.h"
 #include "window/window_core.h"
 #include "window/window_event.h"
@@ -54,3 +56,4 @@ struct linux_wayland_window_s {
     bool configured;
     bool has_damage;
 };
+#endif

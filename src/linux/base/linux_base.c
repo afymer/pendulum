@@ -1,6 +1,6 @@
+#if LINUX
 #include "linux_base.h"
 
-#if LINUX
 void *mem_reserve(size_t size)
 {
     void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

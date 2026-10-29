@@ -1,4 +1,5 @@
 #include "win32_window.h"
+#include "window/window_inc.h"
 
 static win32_window_t *g_active_win32_window = NULL;
 

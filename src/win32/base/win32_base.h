@@ -7,4 +7,4 @@
 #include <timeapi.h>
 #undef RGB
 #define RGB(r, g, b) ARGB(0xFF, r, g, b)
-#include <string.h>
+#include <string.h> // IWYU pragma: keep

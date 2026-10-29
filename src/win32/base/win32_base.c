@@ -1,4 +1,4 @@
-#include "win32_base.h"
+#include "win32_base.h" // IWYU pragma: keep
 
 void *mem_reserve(size_t size)
 {

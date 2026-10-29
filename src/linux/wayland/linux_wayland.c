@@ -1,4 +1,6 @@
 #include "linux_wayland.h"
+
+#if LINUX
 #include "window/window_inc.h"
 
 #include <wayland-client.h>
@@ -701,3 +703,4 @@ void window_present(window_t *base)
     slot->busy = true;
     window->current = NULL;
 }
+#endif
