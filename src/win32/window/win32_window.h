@@ -20,6 +20,10 @@ struct win32_window_s {
     window_t base;
     arena_t *arena;
     HWND hwnd;
+    HANDLE thread;
+    DWORD thread_id;
+    CRITICAL_SECTION event_lock;
+    HANDLE event_signal;
     u32 *pixels;
     usize pixels_capacity;
     framebuffer_t framebuffer;

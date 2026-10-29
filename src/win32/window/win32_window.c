@@ -4,6 +4,7 @@ static win32_window_t *g_active_win32_window = NULL;
 
 static void win32_event_push(win32_window_t *window, const ui_event_t *ev)
 {
+    EnterCriticalSection(&window->event_lock);
     win32_event_queue_t *q = &window->event_queue;
 
     if (ev->kind == UI_EVENT_WINDOW_RESIZE) {
@@ -11,6 +12,8 @@ static void win32_event_push(win32_window_t *window, const ui_event_t *ev)
             u32 idx = (q->head + i) % WIN32_EVENT_QUEUE_CAPACITY;
             if (q->events[idx].kind == UI_EVENT_WINDOW_RESIZE) {
                 q->events[idx].resize = ev->resize;
+                LeaveCriticalSection(&window->event_lock);
+                SetEvent(window->event_signal);
                 return;
             }
         }
@@ -18,6 +21,7 @@ static void win32_event_push(win32_window_t *window, const ui_event_t *ev)
         for (u32 i = 0; i < q->count; i++) {
             u32 idx = (q->head + i) % WIN32_EVENT_QUEUE_CAPACITY;
             if (q->events[idx].kind == UI_EVENT_WINDOW_REDRAW) {
+                LeaveCriticalSection(&window->event_lock);
                 return;
             }
         }
@@ -28,17 +32,22 @@ static void win32_event_push(win32_window_t *window, const ui_event_t *ev)
         q->tail = (q->tail + 1) % WIN32_EVENT_QUEUE_CAPACITY;
         q->count++;
     }
+    LeaveCriticalSection(&window->event_lock);
+    SetEvent(window->event_signal);
 }
 
 static bool win32_event_pop(win32_window_t *window, ui_event_t *out)
 {
+    EnterCriticalSection(&window->event_lock);
     win32_event_queue_t *q = &window->event_queue;
     if (0 == q->count) {
+        LeaveCriticalSection(&window->event_lock);
         return false;
     }
     *out = q->events[q->head];
     q->head = (q->head + 1) % WIN32_EVENT_QUEUE_CAPACITY;
     q->count--;
+    LeaveCriticalSection(&window->event_lock);
     return true;
 }
 
@@ -65,6 +74,12 @@ static LRESULT CALLBACK win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         PostQuitMessage(0);
         return 0;
     }
+    case WM_SYSCOMMAND: {
+        if ((wParam & 0xFFF0) == SC_KEYMENU) {
+            return 0;
+        }
+        return DefWindowProcA(hwnd, msg, wParam, lParam);
+    }
     case WM_SIZE: {
         i32 width = (i32)LOWORD(lParam);
         i32 height = (i32)HIWORD(lParam);
@@ -88,9 +103,11 @@ static LRESULT CALLBACK win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     case WM_ERASEBKGND:
         return 1;
     case WM_KEYDOWN:
-    case WM_KEYUP: {
+    case WM_KEYUP:
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP: {
         if (window) {
-            bool is_down = (msg == WM_KEYDOWN);
+            bool is_down = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
             u32 modifiers = 0;
             if (GetKeyState(VK_SHIFT) & 0x8000)
                 modifiers |= (1 << 0);
@@ -107,6 +124,9 @@ static LRESULT CALLBACK win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                                              .modifiers = modifiers,
                                          },
                                      });
+        }
+        if (msg == WM_SYSKEYDOWN && wParam == VK_F4 && (lParam & (1 << 29))) {
+            return DefWindowProcA(hwnd, msg, wParam, lParam);
         }
         return 0;
     }
@@ -170,6 +190,64 @@ static LRESULT CALLBACK win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     }
 }
 
+typedef struct win32_thread_init_s {
+    win32_window_t *window;
+    window_params_t params;
+    HANDLE ready_event;
+    bool init_success;
+} win32_thread_init_t;
+
+static DWORD WINAPI win32_window_thread_proc(LPVOID param)
+{
+    win32_thread_init_t *init = (win32_thread_init_t *)param;
+    win32_window_t *window = init->window;
+    window_params_t params = init->params;
+
+    HINSTANCE hinst = GetModuleHandleA(NULL);
+    WNDCLASSEXA wc = {
+        .cbSize = sizeof(WNDCLASSEXA),
+        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS,
+        .lpfnWndProc = win32_wnd_proc,
+        .hInstance = hinst,
+        .hCursor = LoadCursorA(NULL, IDC_ARROW),
+        .lpszClassName = "PendulumWindowClass",
+    };
+    RegisterClassExA(&wc);
+
+    RECT rect = { 0, 0, params.width, params.height };
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    AdjustWindowRect(&rect, style, FALSE);
+    i32 win_width = rect.right - rect.left;
+    i32 win_height = rect.bottom - rect.top;
+
+    window->hwnd = CreateWindowExA(0, "PendulumWindowClass", params.title, style,
+                                   CW_USEDEFAULT, CW_USEDEFAULT, win_width, win_height,
+                                   NULL, NULL, hinst, window);
+    if (!window->hwnd) {
+        init->init_success = false;
+        SetEvent(init->ready_event);
+        return 1;
+    }
+
+    ShowWindow(window->hwnd, SW_SHOW);
+    UpdateWindow(window->hwnd);
+
+    init->init_success = true;
+    SetEvent(init->ready_event);
+
+    MSG msg;
+    while (GetMessageA(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+
+    if (window) {
+        window->base.is_open = false;
+        window->base.should_close = true;
+    }
+    return 0;
+}
+
 window_t *window_create(ui_app_t *app, window_params_t params)
 {
     arena_t *arena = arena_create((arena_params_t){
@@ -197,33 +275,38 @@ window_t *window_create(ui_app_t *app, window_params_t params)
         .arena = arena,
     };
 
-    HINSTANCE hinst = GetModuleHandleA(NULL);
-    WNDCLASSEXA wc = {
-        .cbSize = sizeof(WNDCLASSEXA),
-        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
-        .lpfnWndProc = win32_wnd_proc,
-        .hInstance = hinst,
-        .hCursor = LoadCursorA(NULL, IDC_ARROW),
-        .lpszClassName = "PendulumWindowClass",
+    InitializeCriticalSection(&window->event_lock);
+    window->event_signal = CreateEventA(NULL, FALSE, FALSE, NULL);
+
+    timeBeginPeriod(1);
+
+    win32_thread_init_t init = {
+        .window = window,
+        .params = params,
+        .ready_event = CreateEventA(NULL, FALSE, FALSE, NULL),
+        .init_success = false,
     };
-    RegisterClassExA(&wc);
 
-    RECT rect = { 0, 0, params.width, params.height };
-    DWORD style = WS_OVERLAPPEDWINDOW;
-    AdjustWindowRect(&rect, style, FALSE);
-    i32 win_width = rect.right - rect.left;
-    i32 win_height = rect.bottom - rect.top;
-
-    window->hwnd = CreateWindowExA(0, "PendulumWindowClass", params.title, style,
-                                   CW_USEDEFAULT, CW_USEDEFAULT, win_width, win_height,
-                                   NULL, NULL, hinst, window);
-    if (NULL == window->hwnd) {
+    window->thread = CreateThread(NULL, 0, win32_window_thread_proc, &init, 0, &window->thread_id);
+    if (!window->thread) {
+        CloseHandle(init.ready_event);
+        CloseHandle(window->event_signal);
+        DeleteCriticalSection(&window->event_lock);
         arena_free(arena);
         return NULL;
     }
 
-    ShowWindow(window->hwnd, SW_SHOW);
-    UpdateWindow(window->hwnd);
+    WaitForSingleObject(init.ready_event, INFINITE);
+    CloseHandle(init.ready_event);
+
+    if (!init.init_success) {
+        WaitForSingleObject(window->thread, INFINITE);
+        CloseHandle(window->thread);
+        CloseHandle(window->event_signal);
+        DeleteCriticalSection(&window->event_lock);
+        arena_free(arena);
+        return NULL;
+    }
 
     g_active_win32_window = window;
     ui_app_add_window(app, &window->base);
@@ -241,9 +324,21 @@ void window_destroy(window_t *base)
     }
 
     if (window->hwnd) {
-        DestroyWindow(window->hwnd);
-        window->hwnd = NULL;
+        PostMessageA(window->hwnd, WM_CLOSE, 0, 0);
     }
+    if (window->thread) {
+        WaitForSingleObject(window->thread, 2000);
+        CloseHandle(window->thread);
+        window->thread = NULL;
+    }
+    timeEndPeriod(1);
+
+    if (window->event_signal) {
+        CloseHandle(window->event_signal);
+        window->event_signal = NULL;
+    }
+    DeleteCriticalSection(&window->event_lock);
+
     if (window->pixels) {
         VirtualFree(window->pixels, 0, MEM_RELEASE);
         window->pixels = NULL;
@@ -267,34 +362,16 @@ ui_event_t wait_for_event(void)
     }
 
     if (window->base.is_animating) {
-        MSG msg;
-        if (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                window->base.is_open = false;
-                window->base.should_close = true;
-                return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
-            }
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
-            if (win32_event_pop(window, &ev)) {
-                return ev;
-            }
+        WaitForSingleObject(window->event_signal, 1);
+        if (win32_event_pop(window, &ev)) {
+            return ev;
         }
-        Sleep(1);
         window->base.is_dirty = true;
         return (ui_event_t){ .kind = UI_EVENT_WINDOW_REDRAW };
     }
 
-    MSG msg;
     while (window->base.is_open) {
-        BOOL res = GetMessageA(&msg, NULL, 0, 0);
-        if (res <= 0) {
-            window->base.is_open = false;
-            window->base.should_close = true;
-            return (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
-        }
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
+        WaitForSingleObject(window->event_signal, 100);
         if (win32_event_pop(window, &ev)) {
             return ev;
         }
@@ -309,27 +386,7 @@ bool poll_event(ui_event_t *out)
     if (NULL == window || !window->base.is_open) {
         return false;
     }
-
-    if (win32_event_pop(window, out)) {
-        return true;
-    }
-
-    MSG msg;
-    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) {
-            window->base.is_open = false;
-            window->base.should_close = true;
-            *out = (ui_event_t){ .kind = UI_EVENT_WINDOW_CLOSE };
-            return true;
-        }
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
-        if (win32_event_pop(window, out)) {
-            return true;
-        }
-    }
-
-    return false;
+    return win32_event_pop(window, out);
 }
 
 framebuffer_t window_framebuffer(window_t *base)
@@ -349,7 +406,8 @@ framebuffer_t window_framebuffer(window_t *base)
             VirtualFree(window->pixels, 0, MEM_RELEASE);
         }
         window->pixels_capacity = required_size;
-        window->pixels = (u32 *)VirtualAlloc(NULL, window->pixels_capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        window->pixels = (u32 *)VirtualAlloc(NULL, window->pixels_capacity,
+                                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     }
 
     window->framebuffer = (framebuffer_t){
@@ -374,7 +432,8 @@ void window_damage(window_t *base, i32 x, i32 y, i32 w, i32 h)
 void window_present(window_t *base)
 {
     win32_window_t *window = CONTAINER_OF(base, win32_window_t, base);
-    if (NULL == window || NULL == window->pixels || window->base.width <= 0 || window->base.height <= 0) {
+    if (NULL == window || NULL == window->pixels || window->base.width <= 0 ||
+        window->base.height <= 0) {
         return;
     }
 
@@ -391,9 +450,9 @@ void window_present(window_t *base)
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    StretchDIBits(hdc, 0, 0, window->base.width, window->base.height,
-                  0, 0, window->base.width, window->base.height,
-                  window->pixels, &bmi, DIB_RGB_COLORS, SRCCOPY);
+    StretchDIBits(hdc, 0, 0, window->base.width, window->base.height, 0, 0,
+                  window->base.width, window->base.height, window->pixels, &bmi,
+                  DIB_RGB_COLORS, SRCCOPY);
 
     ReleaseDC(window->hwnd, hdc);
 }

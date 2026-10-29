@@ -31,7 +31,7 @@ if errorlevel 1 (
 
 cl /nologo /std:clatest /Zc:preprocessor /Od /Z7 /W4 /wd4201 /wd5105 /wd4100 /Isrc ^
    src\pendulum\pendulum_main.c /Febuild\pendulum.exe /Fobuild\ /Fdbuild\pendulum.pdb ^
-   /link user32.lib gdi32.lib
+   /link user32.lib gdi32.lib winmm.lib
 
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
